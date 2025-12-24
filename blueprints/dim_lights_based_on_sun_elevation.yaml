@@ -266,6 +266,12 @@ trigger:
     service: turn_on
 - platform: homeassistant
   event: start
+- platform: state
+  entity_id: !input target_lights
+  from:
+   - 'off'
+   - 'unavailable'
+  to: 'on'
 mode: queued
 action:
 - choose:
