@@ -267,7 +267,7 @@ trigger:
 - platform: homeassistant
   event: start
 - platform: state
-  entity_id: target_lights
+  entity_id: entity_list
   from:
    - 'off'
    - 'unavailable'
