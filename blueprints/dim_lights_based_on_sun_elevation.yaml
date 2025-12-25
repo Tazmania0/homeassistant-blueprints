@@ -267,7 +267,7 @@ trigger:
 - platform: homeassistant
   event: start
 - platform: state
-  entity_id: entity_list
+  entity_id: '{{ entity_list }}'
   from:
    - 'off'
    - 'unavailable'
