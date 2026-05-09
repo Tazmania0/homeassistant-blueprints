@@ -256,110 +256,7 @@ variables:
     -%}\n    {%- set eids = trigger.event.data.service_data.entity_id -%}\n  {%- endif
     -%}\n  {%- set data = namespace(e=[]) -%}\n  {%- for e in eids -%}\n    {%- if
     e in entity_list -%}\n      {%- set data.e = data.e + [e] -%}\n    {%- endif -%}\n
-    \ {%- endfor -%}\n  {{ data.e }}\n{%- elif trigger.event.event_type == 'state_changed'
-    and trigger.event.data.entity_id is defined and trigger.event.data.entity_id
-    in entity_list and trigger.event.data.old_state is not none and trigger.event.data.new_state
-    is not none and trigger.event.data.old_state.state in ['unavailable', 'unknown',
-    'offline', 'none'] and trigger.event.data.new_state.state not in ['unavailable',
-    'unknown', 'offline', 'none'] -%}\n  {{ [trigger.event.data.entity_id] }}\n{%-
-    else -%}\n  {{ [] }}\n{%- endif -%}"
-  affected_available_entities: "{%- set data = namespace(e=[]) -%}\n{%- for e in affected_entities -%}\n  {%- if states(e) not in ['unavailable', 'unknown', 'offline', 'none'] -%}\n    {%- set data.e = data.e + [e] -%}\n  {%- endif -%}\n{%- endfor -%}\n{{ data.e }}"
-  all_affected_unavailable: '{{ affected_entities|length > 0 and affected_available_entities|length == 0 }}'
-  current_states: "{%- set data = namespace(e=[]) -%} {%- for e in entity_list -%}\n
-    \ {%- set a = {'entity_id': e, 'state': states(e), 'brightness': state_attr(e,
-    'brightness')} -%}\n  {%- set data.e = data.e + [a] -%}\n{%- endfor -%} {{ data.e
-    }}"
-  error_msg: "{%- if start_setting|float <= end_setting|float -%}\n  {{ 'Start elevation
-    must be greater than end elevation when the sun is setting' }}\n{%- elif start_rising|float
-    >= end_rising|float -%}\n  {{ 'End elevation must be greater than start elevation
-    when the sun is rising' }}\n{%- elif entity_list|length == 0 -%}\n  {{ 'No valid
-    entities specified or found' }}\n{%- endif -%}"
-  has_last: "{% if trigger is defined and trigger.platform == 'state' and trigger.from_state.entity_id
-    == 'sun.sun' -%}\n  {{ True }}\n{% else %}\n  {{ False }}\n{% endif %}"
-  rising: '{{ state_attr(''sun.sun'', ''rising'') }}'
-  last_rising: '{% if has_last %}{{ trigger.from_state.attributes.rising }}{% else
-    %}{{ rising }}{% endif %}'
-  elevation: '{{ state_attr(''sun.sun'', ''elevation'') }}'
-  last_elevation: '{% if has_last %}{{ trigger.from_state.attributes.elevation }}{%
-    else %}{{ elevation }}{% endif %}'
-  force_turn_on: '{{ turn_on and ((not reverse and not rising and last_elevation != "" and last_elevation >= end_setting|float and elevation <= start_setting|float) or (reverse and rising and last_elevation != "" and last_elevation <= start_rising|float and elevation >= end_rising|float)) }}'
-  force_turn_off: '{{ turn_off and ((not reverse and rising and last_elevation != "" and last_elevation <= end_rising|float and elevation >= end_rising|float) or (reverse and not rising and last_elevation != "" and last_elevation >= end_setting|float and elevation <= end_setting|float)) }}'
-  max_elevation: '{% if rising %}{{end_rising|float}}{% else %}{{start_setting|float}}{%
-    endif %}'
-  min_elevation: '{% if rising %}{{start_rising|float}}{% else %}{{end_setting|float}}{%
-    endif %}'
-  last_max_elevation: '{% if last_rising %}{{end_rising|float}}{% else %}{{start_setting|float}}{%
-    endif %}'
-  last_min_elevation: '{% if last_rising %}{{start_rising|float}}{% else %}{{end_setting|float}}{%
-    endif %}'
-  elevation_range: '{{ max_elevation - min_elevation }}'
-  last_elevation_range: '{{ last_max_elevation - last_min_elevation }}'
-  brightness_range: '{{ max_brightness - min_brightness }}'
-  delta_to_min: '{{ elevation - min_elevation }}'
-  last_delta_to_min: '{{ last_elevation|float - last_min_elevation }}'
-  full_percent_raw: >-
-    {% if daylight_mode %}
-      {%- set daylight_range = (end_rising|float - end_setting|float) -%}
-      {%- set daylight_delta = (elevation|float - end_setting|float) -%}
-      {% if daylight_range <= 0 %}
-        0
-      {% elif daylight_delta / daylight_range < 0 %}
-        0
-      {% elif daylight_delta / daylight_range > 1 %}
-        1
-      {% else %}
-        {{ daylight_delta / daylight_range }}
-      {% endif %}
-    {% else %}
-      {% if delta_to_min / elevation_range < 0 %}0{% elif delta_to_min / elevation_range > 1 %}1{% else %}{{delta_to_min / elevation_range}}{% endif %}
-    {% endif %}
-  full_percent: '{% if reverse %}{{1 - full_percent_raw}}{% else %}{{full_percent_raw}}{%
-    endif %}'
-  last_full_percent_raw: >-
-    {% if daylight_mode %}
-      {%- set daylight_range = (end_rising|float - end_setting|float) -%}
-      {%- set last_daylight_delta = (last_elevation|float - end_setting|float) -%}
-      {% if daylight_range <= 0 %}
-        0
-      {% elif last_daylight_delta / daylight_range < 0 %}
-        0
-      {% elif last_daylight_delta / daylight_range > 1 %}
-        1
-      {% else %}
-        {{ last_daylight_delta / daylight_range }}
-      {% endif %}
-    {% else %}
-      {% if last_delta_to_min / elevation_range < 0 %}0{% elif last_delta_to_min / elevation_range > 1 %}1{% else %}{{last_delta_to_min / elevation_range}}{% endif %}
-    {% endif %}
-  last_full_percent: '{% if reverse %}{{1 - last_full_percent_raw}}{% else %}{{last_full_percent_raw}}{%
-    endif %}'
-  brightness_pct: '{{ full_percent * brightness_range + min_brightness }}'
-  last_brightness_pct: '{{ last_full_percent * brightness_range + min_brightness }}'
-  brightness: '{{ (brightness_pct * 2.54)|int }}'
-  last_brightness: '{{ (last_brightness_pct * 2.54)|int }}'
-  # Sun-position-derived target color temperature before weather adjustment.
-  raw_color_temp_kelvin: '{{ full_percent * (max_color_temp_kelvin - min_color_temp_kelvin) + min_color_temp_kelvin }}'
-  # Weather-adjusted (unclamped) target color temperature.
-  adjusted_color_temp_kelvin_unclamped: '{{ raw_color_temp_kelvin * weather_cooling_multiplier }}'
-  # Weather-adjusted target clamped to configured min/max Kelvin.
-  adjusted_color_temp_kelvin: '{% if adjusted_color_temp_kelvin_unclamped|float > max_color_temp_kelvin|float %}{{ max_color_temp_kelvin|float }}{% elif adjusted_color_temp_kelvin_unclamped|float < min_color_temp_kelvin|float %}{{ min_color_temp_kelvin|float }}{% else %}{{ adjusted_color_temp_kelvin_unclamped|float }}{% endif %}'
-  # Final integer Kelvin value sent to compatible lights.
-  color_temp_kelvin: '{{ adjusted_color_temp_kelvin|int }}'
-  turn_on_entities: >-
-    {%- if force_turn_on -%}
-      {%- set data = namespace(entities=[]) -%}
-      {%- for e in affected_available_entities -%}
-        {%- set scm = state_attr(e, 'supported_color_modes') or [] -%}
-        {%- set has_bri = (state_attr(e, 'brightness') is not none)
-                           or ('brightness' in scm) or ('hs' in scm)
-                           or ('xy' in scm) or ('rgb' in scm) or ('color_temp' in scm) -%}
-        {# If it doesn't support brightness, just turn it on #}
-        {%- if not has_bri -%}
-          {%- set data.entities = data.entities + [e] -%}
-        {%- endif -%}
-      {%- endfor -%}
-    {{ data.entities }}
-    {%- else -%}
+    \ {%- endfor -%}\n  {{ data.e }}\n{%- else -%}
       {{ [] }}
     {%- endif -%}
   dim_entities: >-
@@ -430,8 +327,6 @@ trigger:
   event_data:
     domain: light
     service: turn_on
-- platform: event
-  event_type: state_changed
 - platform: homeassistant
   event: start
 # NOTE: Home Assistant currently validates `entity_id` in state triggers
@@ -439,6 +334,8 @@ trigger:
 # here causes a startup/config error ("Entity {{ trigger_entity_list }} is neither
 # a valid entity ID nor a valid UUID"). The automation still reacts to light
 # changes through the `call_service` trigger above.
+# Avoid a generic `state_changed` event trigger because it can fire on every
+# entity state update and overwhelm Home Assistant with rapid retriggers.
 mode: restart
 action:
 - choose:
