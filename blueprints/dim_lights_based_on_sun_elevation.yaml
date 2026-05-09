@@ -392,6 +392,8 @@ variables:
     {{ data.entities }}
   turn_off_entities: "{%- if force_turn_off -%}\n  {{ affected_available_entities }}\n{%- else -%}\n
     \ {{ [] }}\n{%- endif -%}"
+trigger_variables:
+  trigger_target_lights: !input target_lights
 trigger:
 - platform: state
   entity_id: sun.sun
@@ -403,12 +405,23 @@ trigger:
     service: turn_on
 - platform: homeassistant
   event: start
-#- platform: state
-#  entity_id: '{{ entity_list }}'
-#  from:
-#   - 'off'
-#   - 'unavailable'
-#  to: 'on'
+- platform: state
+  entity_id: >-
+    {% if trigger_target_lights.entity_id is string %}
+      {{ [trigger_target_lights.entity_id] }}
+    {% else %}
+      {{ trigger_target_lights.entity_id }}
+    {% endif %}
+  from: 'off'
+  to: 'on'
+- platform: state
+  entity_id: >-
+    {% if trigger_target_lights.entity_id is string %}
+      {{ [trigger_target_lights.entity_id] }}
+    {% else %}
+      {{ trigger_target_lights.entity_id }}
+    {% endif %}
+  from: 'unavailable'
 mode: queued
 action:
 - choose:
