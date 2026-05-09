@@ -86,7 +86,7 @@ blueprint:
           step: 0.5
     end_elevation_setting:
       name: Elevation of the sun when the light shall be fully dimmed when the sun
-        is setting
+        is setting (night minimum in Daylight mode)
       default: -30
       selector:
         number:
@@ -113,7 +113,7 @@ blueprint:
           step: 0.5
     end_elevation_rising:
       name: Elevation of the sun when the light shall have max brightness when the
-        sun is rising
+        sun is rising (day maximum in Daylight mode)
       default: 6
       selector:
         number:
