@@ -186,8 +186,9 @@ variables:
   allowance_value: '{{ allowance_input|float * 2.54 }}'
   debugging: !input debugging
   target_lights: !input target_lights
-  entity_list: "{%- if target_lights.entity_id is string -%}\n  {{ [target_lights.entity_id]
-    }}\n{%- else -%}\n  {{ target_lights.entity_id }}\n{%- endif -%}"
+  entity_list: >-
+    {%- set entities = target_lights.entity_id | default([], true) -%}
+    {{ [entities] if entities is string else entities }}
   transition_time: !input transition_time
   turn_on: !input turn_on
   turn_off: !input turn_off
