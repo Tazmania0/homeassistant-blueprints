@@ -15,3 +15,16 @@ Blueprints are used as templates for building automations really quickly.
 - Automatically handles mixed light capabilities:
   - lights with color temperature support get `brightness + color_temp_kelvin`
   - lights without color temperature support get brightness updates only
+
+## Development
+Install test/lint dependencies:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+Run tests:
+
+```bash
+pytest -q
+```
