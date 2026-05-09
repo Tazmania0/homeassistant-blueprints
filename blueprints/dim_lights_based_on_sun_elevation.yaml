@@ -47,9 +47,10 @@ blueprint:
     daylight_mode:
       name: Daylight mode
       description: Keep lights brightest during daytime and dimmest during nighttime.
-        In daylight mode, End elevation (setting) is treated as the night minimum
-        point and End elevation (rising) as the day maximum point. Start elevation
-        sliders keep their existing behavior for force on/off transitions.
+        Brightness transitions smoothly around sunrise and sunset using the configured
+        elevation limits. In daylight mode, End elevation (setting) is treated as
+        the night minimum point and End elevation (rising) as the day maximum point.
+        Start elevation sliders keep their existing behavior for force on/off transitions.
       default: false
       selector:
         boolean: {}
