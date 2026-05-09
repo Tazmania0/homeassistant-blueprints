@@ -188,9 +188,15 @@ variables:
   target_lights: !input target_lights
   entity_list: >-
     {%- set target = target_lights | default({}, true) -%}
-    {%- set entities = target.entity_id if target is mapping else target -%}
-    {%- set entities = entities | default([], true) -%}
-    {{ [entities] if entities is string else entities }}
+    {%- set entities = target.entity_id if target is mapping and 'entity_id' in target else target -%}
+    {%- set raw_list = [entities] if entities is string else (entities if entities is sequence and entities is not mapping else []) -%}
+    {%- set clean_raw = raw_list | reject('none') | reject('equalto', '') | list -%}
+    {%- set expanded_ids = expand(clean_raw) | map(attribute='entity_id') | list -%}
+    {{ (clean_raw + expanded_ids)
+       | reject('none')
+       | reject('equalto', '')
+       | unique
+       | list }}
   transition_time: !input transition_time
   turn_on: !input turn_on
   turn_off: !input turn_off
@@ -395,19 +401,6 @@ variables:
     {{ data.entities }}
   turn_off_entities: "{%- if force_turn_off -%}\n  {{ affected_available_entities }}\n{%- else -%}\n
     \ {{ [] }}\n{%- endif -%}"
-trigger_variables:
-  trigger_target_lights: !input target_lights
-  trigger_entity_list: >-
-    {%- set target = trigger_target_lights | default({}, true) -%}
-    {%- set entities = target.entity_id if target is mapping and 'entity_id' in target else target -%}
-    {%- set raw_list = [entities] if entities is string else (entities if entities is sequence else []) -%}
-    {%- set clean_raw = raw_list | reject('none') | reject('equalto', '') | list -%}
-    {%- set expanded_ids = expand(clean_raw) | map(attribute='entity_id') | list -%}
-    {{ (clean_raw + expanded_ids)
-       | reject('none')
-       | reject('equalto', '')
-       | unique
-       | list }}
 trigger:
 - platform: state
   entity_id: sun.sun
@@ -419,15 +412,6 @@ trigger:
     service: turn_on
 - platform: homeassistant
   event: start
-- platform: state
-  entity_id: >-
-    {{ trigger_entity_list }}
-  from: 'off'
-  to: 'on'
-- platform: state
-  entity_id: >-
-    {{ trigger_entity_list }}
-  from: 'unavailable'
 mode: queued
 action:
 - choose:
