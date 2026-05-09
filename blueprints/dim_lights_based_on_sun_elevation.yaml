@@ -188,9 +188,15 @@ variables:
   target_lights: !input target_lights
   entity_list: >-
     {%- set target = target_lights | default({}, true) -%}
-    {%- set entities = target.entity_id if target is mapping else target -%}
-    {%- set entities = entities | default([], true) -%}
-    {{ [entities] if entities is string else entities }}
+    {%- set entities = target.entity_id if target is mapping and 'entity_id' in target else target -%}
+    {%- set raw_list = [entities] if entities is string else (entities if entities is sequence and entities is not mapping else []) -%}
+    {%- set clean_raw = raw_list | reject('none') | reject('equalto', '') | list -%}
+    {%- set expanded_ids = expand(clean_raw) | map(attribute='entity_id') | list -%}
+    {{ (clean_raw + expanded_ids)
+       | reject('none')
+       | reject('equalto', '')
+       | unique
+       | list }}
   transition_time: !input transition_time
   turn_on: !input turn_on
   turn_off: !input turn_off
@@ -400,7 +406,7 @@ trigger_variables:
   trigger_entity_list: >-
     {%- set target = trigger_target_lights | default({}, true) -%}
     {%- set entities = target.entity_id if target is mapping and 'entity_id' in target else target -%}
-    {%- set raw_list = [entities] if entities is string else (entities if entities is sequence else []) -%}
+    {%- set raw_list = [entities] if entities is string else (entities if entities is sequence and entities is not mapping else []) -%}
     {%- set clean_raw = raw_list | reject('none') | reject('equalto', '') | list -%}
     {%- set expanded_ids = expand(clean_raw) | map(attribute='entity_id') | list -%}
     {{ (clean_raw + expanded_ids)
