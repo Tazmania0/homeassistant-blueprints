@@ -248,15 +248,27 @@ variables:
        and trigger.event.event_type == 'call_service'
        and trigger.event.data.service_data is defined
        and trigger.event.data.service_data|length > 1 }}
-  affected_entities: "{%- if skip_event -%}\n  {{ [] }}\n{%- elif trigger is not
-    defined or trigger.platform != 'event' -%}\n  {{ entity_list }}\n{%- elif trigger.event.event_type
-    == 'call_service' and trigger.event.data.service_data is defined and trigger.event.data.service_data.entity_id
-    is defined -%}\n  {%- if trigger.event.data.service_data.entity_id is string -%}\n
-    \   {%- set eids = [trigger.event.data.service_data.entity_id] -%}\n  {%- else
-    -%}\n    {%- set eids = trigger.event.data.service_data.entity_id -%}\n  {%- endif
-    -%}\n  {%- set data = namespace(e=[]) -%}\n  {%- for e in eids -%}\n    {%- if
-    e in entity_list -%}\n      {%- set data.e = data.e + [e] -%}\n    {%- endif -%}\n
-    \ {%- endfor -%}\n  {{ data.e }}\n{%- else -%}
+  affected_entities: >-
+    {%- if skip_event -%}
+      {{ [] }}
+    {%- elif trigger is not defined or trigger.platform != 'event' -%}
+      {{ entity_list }}
+    {%- elif trigger.event.event_type == 'call_service'
+          and trigger.event.data.service_data is defined
+          and trigger.event.data.service_data.entity_id is defined -%}
+      {%- if trigger.event.data.service_data.entity_id is string -%}
+        {%- set eids = [trigger.event.data.service_data.entity_id] -%}
+      {%- else -%}
+        {%- set eids = trigger.event.data.service_data.entity_id -%}
+      {%- endif -%}
+      {%- set data = namespace(e=[]) -%}
+      {%- for e in eids -%}
+        {%- if e in entity_list -%}
+          {%- set data.e = data.e + [e] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ data.e }}
+    {%- else -%}
       {{ [] }}
     {%- endif -%}
   dim_entities: >-
@@ -305,8 +317,12 @@ variables:
       {%- endif -%}
     {%- endfor -%}
     {{ data.entities }}
-  turn_off_entities: "{%- if force_turn_off -%}\n  {{ affected_available_entities }}\n{%- else -%}\n
-    \ {{ [] }}\n{%- endif -%}"
+  turn_off_entities: >-
+    {%- if force_turn_off -%}
+      {{ affected_available_entities }}
+    {%- else -%}
+      {{ [] }}
+    {%- endif -%}
 trigger_variables:
   trigger_target_lights: !input target_lights
   trigger_entity_list: >-
