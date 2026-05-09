@@ -44,6 +44,14 @@ blueprint:
       default: false
       selector:
         boolean: {}
+    daylight_mode:
+      name: Daylight mode
+      description: Keep lights brightest during daytime and dimmest during nighttime.
+        Brightness transitions smoothly around sunrise and sunset using the configured
+        elevation limits.
+      default: false
+      selector:
+        boolean: {}
     allowance:
       name: Change Allowance
       description: How much can the brightnes be changed without this automation stop
@@ -144,6 +152,7 @@ variables:
   turn_on: !input turn_on
   turn_off: !input turn_off
   reverse: !input reverse
+  daylight_mode: !input daylight_mode
   start_setting: !input start_elevation_setting
   start_rising: !input start_elevation_rising
   end_setting: !input end_elevation_setting
@@ -164,6 +173,8 @@ variables:
     endif -%}\n  {%- set data = namespace(e=[]) -%}\n  {%- for e in eids -%}\n    {%-
     if e in entity_list -%}\n      {%- set data.e = data.e + [e] -%}\n    {%- endif
     -%}\n  {% endfor %}\n  {{ data.e }}\n{%- endif -%}"
+  affected_available_entities: "{%- set data = namespace(e=[]) -%}\n{%- for e in affected_entities -%}\n  {%- if states(e) not in ['unavailable', 'unknown', 'offline'] -%}\n    {%- set data.e = data.e + [e] -%}\n  {%- endif -%}\n{%- endfor -%}\n{{ data.e }}"
+  all_affected_unavailable: '{{ affected_entities|length > 0 and affected_available_entities|length == 0 }}'
   current_states: "{%- set data = namespace(e=[]) -%} {%- for e in entity_list -%}\n
     \ {%- set a = {'entity_id': e, 'state': states(e), 'brightness': state_attr(e,
     'brightness')} -%}\n  {%- set data.e = data.e + [a] -%}\n{%- endfor -%} {{ data.e
@@ -196,14 +207,40 @@ variables:
   brightness_range: '{{ max_brightness - min_brightness }}'
   delta_to_min: '{{ elevation - min_elevation }}'
   last_delta_to_min: '{{ last_elevation|float - last_min_elevation }}'
-  full_percent_raw: '{% if delta_to_min / elevation_range < 0 %}0{% elif delta_to_min
-    / elevation_range > 1 %}1{% else %}{{delta_to_min / elevation_range}}{% endif
-    %}'
+  full_percent_raw: >-
+    {% if daylight_mode %}
+      {%- set daylight_range = (end_rising|float - end_setting|float) -%}
+      {%- set daylight_delta = (elevation|float - end_setting|float) -%}
+      {% if daylight_range <= 0 %}
+        0
+      {% elif daylight_delta / daylight_range < 0 %}
+        0
+      {% elif daylight_delta / daylight_range > 1 %}
+        1
+      {% else %}
+        {{ daylight_delta / daylight_range }}
+      {% endif %}
+    {% else %}
+      {% if delta_to_min / elevation_range < 0 %}0{% elif delta_to_min / elevation_range > 1 %}1{% else %}{{delta_to_min / elevation_range}}{% endif %}
+    {% endif %}
   full_percent: '{% if reverse %}{{1 - full_percent_raw}}{% else %}{{full_percent_raw}}{%
     endif %}'
-  last_full_percent_raw: '{% if last_delta_to_min / elevation_range < 0 %}0{% elif
-    last_delta_to_min / elevation_range > 1 %}1{% else %}{{last_delta_to_min / elevation_range}}{%
-    endif %}'
+  last_full_percent_raw: >-
+    {% if daylight_mode %}
+      {%- set daylight_range = (end_rising|float - end_setting|float) -%}
+      {%- set last_daylight_delta = (last_elevation|float - end_setting|float) -%}
+      {% if daylight_range <= 0 %}
+        0
+      {% elif last_daylight_delta / daylight_range < 0 %}
+        0
+      {% elif last_daylight_delta / daylight_range > 1 %}
+        1
+      {% else %}
+        {{ last_daylight_delta / daylight_range }}
+      {% endif %}
+    {% else %}
+      {% if last_delta_to_min / elevation_range < 0 %}0{% elif last_delta_to_min / elevation_range > 1 %}1{% else %}{{last_delta_to_min / elevation_range}}{% endif %}
+    {% endif %}
   last_full_percent: '{% if reverse %}{{1 - last_full_percent_raw}}{% else %}{{last_full_percent_raw}}{%
     endif %}'
   brightness_pct: '{{ full_percent * brightness_range + min_brightness }}'
@@ -213,7 +250,7 @@ variables:
   turn_on_entities: >-
     {%- if force_turn_on -%}
       {%- set data = namespace(entities=[]) -%}
-      {%- for e in entity_list -%}
+      {%- for e in affected_available_entities -%}
         {%- set scm = state_attr(e, 'supported_color_modes') or [] -%}
         {%- set has_bri = (state_attr(e, 'brightness') is not none)
                            or ('brightness' in scm) or ('hs' in scm)
@@ -240,7 +277,7 @@ variables:
             or ('rgb' in scm) or ('color_temp' in scm)
           ) or (not is_on) -%}
       {# logic continues… #}
-      {%- if e in affected_entities -%}
+      {%- if e in affected_available_entities -%}
         {%- if trigger_is_event and (not is_on or (is_on and last_changed.total_seconds() < 2)) -%}
           {%- set data.entities = data.entities + [e] -%}
         {%- elif can_dim and force_turn_on -%}
@@ -253,7 +290,7 @@ variables:
       {%- endif -%}
     {%- endfor -%}
     {{ data.entities }}
-  turn_off_entities: "{%- if force_turn_off -%}\n  {{ entity_list }}\n{%- else -%}\n
+  turn_off_entities: "{%- if force_turn_off -%}\n  {{ affected_available_entities }}\n{%- else -%}\n
     \ {{ [] }}\n{%- endif -%}"
 trigger:
 - platform: state
@@ -335,21 +372,21 @@ action:
     - choose:
       - conditions:
         - condition: template
-          value_template: '{{ not skip_event and turn_off_entities|length > 0 }}'
+          value_template: '{{ not skip_event and not all_affected_unavailable and turn_off_entities|length > 0 }}'
         sequence:
         - service: light.turn_off
           data:
             entity_id: '{{ turn_off_entities }}'
       - conditions:
         - condition: template
-          value_template: '{{ not skip_event and turn_on_entities|length > 0 }}'
+          value_template: '{{ not skip_event and not all_affected_unavailable and turn_on_entities|length > 0 }}'
         sequence:
         - service: light.turn_on
           data:
             entity_id: '{{ turn_on_entities }}'
       - conditions:
         - condition: template
-          value_template: '{{ not skip_event and dim_entities|length > 0 }}'
+          value_template: '{{ not skip_event and not all_affected_unavailable and dim_entities|length > 0 }}'
         sequence:
         - service: light.turn_on
           data:
