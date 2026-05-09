@@ -254,7 +254,7 @@ variables:
   # True when no weather entity is configured, meaning sun-only color temperature behavior.
   weather_fallback_active: '{{ weather_entity is not string or weather_entity|length == 0 }}'
   elevation: '{{ state_attr(''sun.sun'', ''elevation'')|float(0) }}'
-  rising: '{{ elevation|float >= 0 }}'
+  rising: '{{ state_attr(''sun.sun'', ''rising'') if state_attr(''sun.sun'', ''rising'') is not none else (elevation|float >= 0) }}'
   transition_span: >-
     {% if rising %}
       {{ (end_rising|float - start_rising|float)|abs }}
@@ -267,7 +267,7 @@ variables:
     {% elif rising %}
       {{ ((elevation|float - start_rising|float) / transition_span|float) | float }}
     {% else %}
-      {{ ((start_setting|float - elevation|float) / transition_span|float) | float }}
+      {{ ((elevation|float - end_setting|float) / transition_span|float) | float }}
     {% endif %}
   clamped_position: '{{ [0, [normalized_position|float, 1]|min]|max }}'
   effective_position: '{{ 1 - clamped_position|float if reverse else clamped_position|float }}'
