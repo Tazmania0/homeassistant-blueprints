@@ -243,17 +243,26 @@ variables:
   # True when no weather entity is configured, meaning sun-only color temperature behavior.
   weather_fallback_active: '{{ weather_entity is not string or weather_entity|length == 0 }}'
   trigger_is_event: '{{ trigger is defined and trigger.platform == ''event'' }}'
-  skip_event: '{{ trigger_is_event and trigger.event.data.service_data|length > 1
-    }}'
-  affected_entities: "{%- if skip_event -%}\n  {{ [] }}\n{%- elif trigger is not defined
-    or trigger.platform != 'event' or trigger.event.data.service_data is not defined
-    or trigger.event.data.service_data.entity_id is not defined -%}\n  {{ entity_list
-    }}\n{%- else -%}\n  {%- if trigger.event.data.service_data.entity_id is string
-    -%}\n    {%- set eids = [trigger.event.data.service_data.entity_id] -%}\n  {%-
-    else -%}\n    {%- set eids = trigger.event.data.service_data.entity_id -%}\n  {%-
-    endif -%}\n  {%- set data = namespace(e=[]) -%}\n  {%- for e in eids -%}\n    {%-
-    if e in entity_list -%}\n      {%- set data.e = data.e + [e] -%}\n    {%- endif
-    -%}\n  {% endfor %}\n  {{ data.e }}\n{%- endif -%}"
+  skip_event: >-
+    {{ trigger_is_event
+       and trigger.event.event_type == 'call_service'
+       and trigger.event.data.service_data is defined
+       and trigger.event.data.service_data|length > 1 }}
+  affected_entities: "{%- if skip_event -%}\n  {{ [] }}\n{%- elif trigger is not
+    defined or trigger.platform != 'event' -%}\n  {{ entity_list }}\n{%- elif trigger.event.event_type
+    == 'call_service' and trigger.event.data.service_data is defined and trigger.event.data.service_data.entity_id
+    is defined -%}\n  {%- if trigger.event.data.service_data.entity_id is string -%}\n
+    \   {%- set eids = [trigger.event.data.service_data.entity_id] -%}\n  {%- else
+    -%}\n    {%- set eids = trigger.event.data.service_data.entity_id -%}\n  {%- endif
+    -%}\n  {%- set data = namespace(e=[]) -%}\n  {%- for e in eids -%}\n    {%- if
+    e in entity_list -%}\n      {%- set data.e = data.e + [e] -%}\n    {%- endif -%}\n
+    \ {%- endfor -%}\n  {{ data.e }}\n{%- elif trigger.event.event_type == 'state_changed'
+    and trigger.event.data.entity_id is defined and trigger.event.data.entity_id
+    in entity_list and trigger.event.data.old_state is not none and trigger.event.data.new_state
+    is not none and trigger.event.data.old_state.state in ['unavailable', 'unknown',
+    'offline', 'none'] and trigger.event.data.new_state.state not in ['unavailable',
+    'unknown', 'offline', 'none'] -%}\n  {{ [trigger.event.data.entity_id] }}\n{%-
+    else -%}\n  {{ [] }}\n{%- endif -%}"
   affected_available_entities: "{%- set data = namespace(e=[]) -%}\n{%- for e in affected_entities -%}\n  {%- if states(e) not in ['unavailable', 'unknown', 'offline', 'none'] -%}\n    {%- set data.e = data.e + [e] -%}\n  {%- endif -%}\n{%- endfor -%}\n{{ data.e }}"
   all_affected_unavailable: '{{ affected_entities|length > 0 and affected_available_entities|length == 0 }}'
   current_states: "{%- set data = namespace(e=[]) -%} {%- for e in entity_list -%}\n
@@ -423,6 +432,8 @@ trigger:
   event_data:
     domain: light
     service: turn_on
+- platform: event
+  event_type: state_changed
 - platform: homeassistant
   event: start
 # NOTE: Home Assistant currently validates `entity_id` in state triggers
