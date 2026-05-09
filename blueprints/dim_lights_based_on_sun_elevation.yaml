@@ -253,6 +253,20 @@ variables:
       {{ [] }}
     {%- elif trigger is not defined or trigger.platform != 'event' -%}
       {{ entity_list }}
+    {%- elif trigger.event.event_type == 'state_changed'
+          and trigger.event.data is defined
+          and trigger.event.data.entity_id is defined
+          and trigger.event.data.old_state is defined
+          and trigger.event.data.new_state is defined -%}
+      {%- set old_s = trigger.event.data.old_state.state if trigger.event.data.old_state is not none else none -%}
+      {%- set new_s = trigger.event.data.new_state.state if trigger.event.data.new_state is not none else none -%}
+      {%- if trigger.event.data.entity_id in entity_list
+            and old_s in ['unavailable', 'unknown']
+            and new_s not in ['unavailable', 'unknown', none] -%}
+        {{ [trigger.event.data.entity_id] }}
+      {%- else -%}
+        {{ [] }}
+      {%- endif -%}
     {%- elif trigger.event.event_type == 'call_service'
           and trigger.event.data.service_data is defined
           and trigger.event.data.service_data.entity_id is defined -%}
@@ -359,6 +373,8 @@ trigger:
   entity_id: sun.sun
   attribute: elevation
 - platform: event
+  event_type: state_changed
+- platform: event
   event_type: call_service
   event_data:
     domain: light
@@ -369,9 +385,8 @@ trigger:
 # before evaluating blueprint trigger variables. Using `{{ trigger_entity_list }}`
 # here causes a startup/config error ("Entity {{ trigger_entity_list }} is neither
 # a valid entity ID nor a valid UUID"). The automation still reacts to light
-# changes through the `call_service` trigger above.
-# Avoid a generic `state_changed` event trigger because it can fire on every
-# entity state update and overwhelm Home Assistant with rapid retriggers.
+# changes through the `call_service` trigger above and the guarded
+# `state_changed` event trigger.
 mode: restart
 action:
 - choose:
