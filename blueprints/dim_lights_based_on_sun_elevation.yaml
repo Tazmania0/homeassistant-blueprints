@@ -2,7 +2,7 @@ blueprint:
   name: Dim lights based on sun elevation
   description: Adjust brightness of lights based on the current sun elevation. If
     force debug is enabled, you need to execute this automation manually or let Home
-    Assitant restart before the change take effect.
+    Assistant restart before the changes take effect.
   source_url: https://github.com/EvTheFuture/homeassistant-blueprints/blob/master/blueprints/dim_lights_based_on_sun_elevation.yaml
   domain: automation
   input:
@@ -26,7 +26,7 @@ blueprint:
           mode: slider
           step: 1.0
     min_brightness:
-      name: Minimum brightnes percent
+      name: Minimum brightness percent
       description: Brightness to set as the minimum brightness
       default: 1
       selector:
@@ -57,8 +57,8 @@ blueprint:
         boolean: {}
     allowance:
       name: Change Allowance
-      description: How much can the brightnes be changed without this automation stop
-        updating the brightness. If set to 0% this automation will stop update the
+      description: How much can the brightness be changed without this automation stop
+        updating the brightness. If set to 0% this automation will stop updating the
         brightness if the brightness has been changed at all since the last triggering
         of this automation. If set to 100% this automation will keep on and update
         the brightness even if you have manually changed the brightness to any other
@@ -121,7 +121,7 @@ blueprint:
           mode: slider
           step: 0.5
     end_elevation_rising:
-      name: Elevation of the sun when the light shall have max brightness when the
+      name: Elevation of the sun when the light shall have maximum brightness when the
         sun is rising (day maximum in Daylight mode)
       description: In Daylight mode, this is the day anchor. At or above this elevation
         the brightness reaches the configured maximum.
@@ -143,6 +143,35 @@ blueprint:
           unit_of_measurement: s
           mode: slider
           step: 0.25
+    min_color_temp_kelvin:
+      name: Minimum color temperature (Kelvin)
+      description: Warmest color temperature used at the lowest normalized sun level.
+      default: 2200
+      selector:
+        number:
+          min: 1500.0
+          max: 10000.0
+          unit_of_measurement: K
+          mode: slider
+          step: 50.0
+    max_color_temp_kelvin:
+      name: Maximum color temperature (Kelvin)
+      description: Coolest color temperature used at the highest normalized sun level.
+      default: 6000
+      selector:
+        number:
+          min: 1500.0
+          max: 10000.0
+          unit_of_measurement: K
+          mode: slider
+          step: 50.0
+    weather_entity:
+      name: Weather entity (optional)
+      description: Optional weather source (for example weather.home). Compatible with Home Assistant weather entities including the default Met.no integration. Uses the current weather condition (state, or condition attribute fallback) such as sunny, partlycloudy, cloudy, or rainy to apply a small cooling multiplier.
+      default: ''
+      selector:
+        entity:
+          domain: weather
     debugging:
       name: Debug logging
       description: 'WARNING: Don''t enable this unless you have activated ''logger''
@@ -172,6 +201,38 @@ variables:
   max_brightness: '{{ max_brightness_input|float }}'
   min_brightness_input: !input min_brightness
   min_brightness: '{{ min_brightness_input|float }}'
+  # User-configured warm/cool bounds for the sun-based color temperature curve.
+  min_color_temp_kelvin_input: !input min_color_temp_kelvin
+  min_color_temp_kelvin: '{{ min_color_temp_kelvin_input|float }}'
+  max_color_temp_kelvin_input: !input max_color_temp_kelvin
+  max_color_temp_kelvin: '{{ max_color_temp_kelvin_input|float }}'
+  # Optional weather entity used to nudge the sun curve cooler for cloudy/rainy conditions.
+  weather_entity: !input weather_entity
+  # Effective weather condition string used by this blueprint (state first, attribute fallback).
+  weather_condition: >-
+    {% if weather_entity is string and weather_entity|length > 0 %}
+      {% set ws = states(weather_entity) %}
+      {% if ws in ['unknown', 'unavailable', 'none', ''] %}
+        {{ state_attr(weather_entity, 'condition') or 'none' }}
+      {% else %}
+        {{ ws }}
+      {% endif %}
+    {% else %}
+      none
+    {% endif %}
+  # Multiplier applied to the sun-derived Kelvin value (1.0 means no weather adjustment).
+  weather_cooling_multiplier: >-
+    {# Source: condition of the configured weather entity (weather_entity input). #}
+    {% set ws = weather_condition|lower %}
+    {% if ws in ['cloudy', 'fog', 'rainy', 'pouring', 'snowy', 'snowy-rainy', 'hail', 'lightning-rainy'] %}
+      1.08
+    {% elif ws in ['partlycloudy', 'windy', 'windy-variant'] %}
+      1.04
+    {% else %}
+      1.0
+    {% endif %}
+  # True when no weather entity is configured, meaning sun-only color temperature behavior.
+  weather_fallback_active: '{{ weather_entity is not string or weather_entity|length == 0 }}'
   trigger_is_event: '{{ trigger is defined and trigger.platform == ''event'' }}'
   skip_event: '{{ trigger_is_event and trigger.event.data.service_data|length > 1
     }}'
@@ -191,10 +252,10 @@ variables:
     'brightness')} -%}\n  {%- set data.e = data.e + [a] -%}\n{%- endfor -%} {{ data.e
     }}"
   error_msg: "{%- if start_setting|float <= end_setting|float -%}\n  {{ 'Start elevation
-    must be greater than end evevation when the sun is setting' }}\n{%- elif start_rising|float
-    >= end_rising|float -%}\n  {{ 'End elevation must be greater than start evevation
+    must be greater than end elevation when the sun is setting' }}\n{%- elif start_rising|float
+    >= end_rising|float -%}\n  {{ 'End elevation must be greater than start elevation
     when the sun is rising' }}\n{%- elif entity_list|length == 0 -%}\n  {{ 'No valid
-    entites specified or found' }}\n{%- endif -%}"
+    entities specified or found' }}\n{%- endif -%}"
   has_last: "{% if trigger is defined and trigger.platform == 'state' and trigger.from_state.entity_id
     == 'sun.sun' -%}\n  {{ True }}\n{% else %}\n  {{ False }}\n{% endif %}"
   rising: '{{ state_attr(''sun.sun'', ''rising'') }}'
@@ -258,6 +319,14 @@ variables:
   last_brightness_pct: '{{ last_full_percent * brightness_range + min_brightness }}'
   brightness: '{{ (brightness_pct * 2.54)|int }}'
   last_brightness: '{{ (last_brightness_pct * 2.54)|int }}'
+  # Sun-position-derived target color temperature before weather adjustment.
+  raw_color_temp_kelvin: '{{ full_percent * (max_color_temp_kelvin - min_color_temp_kelvin) + min_color_temp_kelvin }}'
+  # Weather-adjusted (unclamped) target color temperature.
+  adjusted_color_temp_kelvin_unclamped: '{{ raw_color_temp_kelvin * weather_cooling_multiplier }}'
+  # Weather-adjusted target clamped to configured min/max Kelvin.
+  adjusted_color_temp_kelvin: '{% if adjusted_color_temp_kelvin_unclamped|float > max_color_temp_kelvin|float %}{{ max_color_temp_kelvin|float }}{% elif adjusted_color_temp_kelvin_unclamped|float < min_color_temp_kelvin|float %}{{ min_color_temp_kelvin|float }}{% else %}{{ adjusted_color_temp_kelvin_unclamped|float }}{% endif %}'
+  # Final integer Kelvin value sent to compatible lights.
+  color_temp_kelvin: '{{ adjusted_color_temp_kelvin|int }}'
   turn_on_entities: >-
     {%- if force_turn_on -%}
       {%- set data = namespace(entities=[]) -%}
@@ -298,6 +367,26 @@ variables:
                    or ((current_brightness - last_brightness)|abs <= allowance_value)) -%}
           {%- set data.entities = data.entities + [e] -%}
         {%- endif -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {{ data.entities }}
+  # Subset of dimmable entities that support color temperature updates.
+  dim_color_temp_entities: >-
+    {%- set data = namespace(entities=[]) -%}
+    {%- for e in dim_entities -%}
+      {%- set scm = state_attr(e, 'supported_color_modes') or [] -%}
+      {%- if ('color_temp' in scm) or ('color_temp_kelvin' in scm) -%}
+        {%- set data.entities = data.entities + [e] -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {{ data.entities }}
+  # Subset of dimmable entities that do not support color temperature updates.
+  dim_brightness_only_entities: >-
+    {%- set data = namespace(entities=[]) -%}
+    {%- for e in dim_entities -%}
+      {%- set scm = state_attr(e, 'supported_color_modes') or [] -%}
+      {%- if not (('color_temp' in scm) or ('color_temp_kelvin' in scm)) -%}
+        {%- set data.entities = data.entities + [e] -%}
       {%- endif -%}
     {%- endfor -%}
     {{ data.entities }}
@@ -363,12 +452,12 @@ action:
               allowance_value }}\n affected_entities: {{ affected_entities }}\n\n
               elevation: {{ elevation }} ({% if rising %}{{ start_rising ~ ', ' ~
               end_rising }}{% else %}{{ start_setting ~ ', ' ~ end_setting }}{% endif
-              %})\n {% if last_elevation != \"\" -%}last elevation: {{ last_elevation
+              %})\n weather_condition: {{ weather_condition }}\n weather_fallback_active: {{ weather_fallback_active }}\n weather_cooling_multiplier: {{ weather_cooling_multiplier }}\n color_temp_kelvin: {{ color_temp_kelvin }}\n {% if last_elevation != \"\" -%}last elevation: {{ last_elevation
               }}\n{% endif %} new brightness: {{ brightness }}\n {% if last_elevation
               != \"\" -%}last brightness: {{ last_brightness }}\n{% endif %} \n current_states:
               {{ current_states }}\n \n force_turn_on: {{ force_turn_on }}\n force_turn_off:
               {{ force_turn_off }}\n \n entities: {{ entity_list }}\n \n turn_on_entities:
-              {{ turn_on_entities }}\n \n dim_entities: {{ dim_entities }}\n \n turn_off_entities:
+              {{ turn_on_entities }}\n \n dim_entities: {{ dim_entities }}\n dim_color_temp_entities: {{ dim_color_temp_entities }}\n dim_brightness_only_entities: {{ dim_brightness_only_entities }}\n \n turn_off_entities:
               {{ turn_off_entities }}\n \n {% if trigger is defined %}Triggered by:
               {{ trigger.platform }}\n{% endif %} {% if trigger is defined and trigger.platform
               == 'state' and trigger.from_state.entity_id == 'sun.sun' -%} from: (elevation:
@@ -397,11 +486,21 @@ action:
             entity_id: '{{ turn_on_entities }}'
       - conditions:
         - condition: template
-          value_template: '{{ not skip_event and not all_affected_unavailable and dim_entities|length > 0 }}'
+          value_template: '{{ not skip_event and not all_affected_unavailable and dim_color_temp_entities|length > 0 }}'
         sequence:
         - service: light.turn_on
           data:
-            entity_id: '{{ dim_entities }}'
+            entity_id: '{{ dim_color_temp_entities }}'
+            brightness: '{{ brightness }}'
+            color_temp_kelvin: '{{ color_temp_kelvin }}'
+            transition: '{{ transition_time }}'
+      - conditions:
+        - condition: template
+          value_template: '{{ not skip_event and not all_affected_unavailable and dim_brightness_only_entities|length > 0 }}'
+        sequence:
+        - service: light.turn_on
+          data:
+            entity_id: '{{ dim_brightness_only_entities }}'
             brightness: '{{ brightness }}'
             transition: '{{ transition_time }}'
       default: []
