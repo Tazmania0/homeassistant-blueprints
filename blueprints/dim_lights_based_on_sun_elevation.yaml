@@ -408,13 +408,17 @@ trigger:
   event: start
 - platform: state
   entity_id: >-
-    {%- set entities = trigger_target_lights.entity_id | default([], true) -%}
+    {%- set target = trigger_target_lights | default({}, true) -%}
+    {%- set entities = target.entity_id if target is mapping else target -%}
+    {%- set entities = entities | default([], true) -%}
     {{ [entities] if entities is string else entities }}
   from: 'off'
   to: 'on'
 - platform: state
   entity_id: >-
-    {%- set entities = trigger_target_lights.entity_id | default([], true) -%}
+    {%- set target = trigger_target_lights | default({}, true) -%}
+    {%- set entities = target.entity_id if target is mapping else target -%}
+    {%- set entities = entities | default([], true) -%}
     {{ [entities] if entities is string else entities }}
   from: 'unavailable'
 mode: queued
