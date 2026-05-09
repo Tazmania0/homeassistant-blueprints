@@ -368,13 +368,16 @@ variables:
     {%- for e in entity_list -%}
       {%- set current_brightness = state_attr(e, 'brightness') -%}
       {%- set desired_brightness = brightness if brightness is defined else current_brightness -%}
+      {%- set current_color_temp_kelvin = state_attr(e, 'color_temp_kelvin') -%}
+      {%- set desired_color_temp_kelvin = color_temp_kelvin if color_temp_kelvin is defined else current_color_temp_kelvin -%}
       {%- set is_on = states(e) == 'on' -%}
       {%- set last_changed = (now() - states[e].last_changed) -%}
       {%- set scm = state_attr(e, 'supported_color_modes') or [] -%}
+      {%- set supports_color_temp = ('color_temp' in scm) or ('color_temp_kelvin' in scm) -%}
       {%- set can_dim = (
             (state_attr(e, 'brightness') is not none)
             or ('brightness' in scm) or ('hs' in scm) or ('xy' in scm)
-            or ('rgb' in scm) or ('color_temp' in scm)
+            or ('rgb' in scm) or supports_color_temp
           ) or (not is_on) -%}
       {# logic continues… #}
       {%- if e in affected_available_entities -%}
@@ -382,8 +385,10 @@ variables:
           {%- set data.entities = data.entities + [e] -%}
         {%- elif can_dim and force_turn_on -%}
           {%- set data.entities = data.entities + [e] -%}
-        {%- elif can_dim and is_on and current_brightness != desired_brightness
-              and ((allowance_input|float == 100.0)
+        {%- elif can_dim and is_on and (
+                current_brightness != desired_brightness
+                or (supports_color_temp and current_color_temp_kelvin != desired_color_temp_kelvin)
+              ) and ((allowance_input|float == 100.0)
                    or ((current_brightness - (last_brightness|default(desired_brightness)))|abs <= allowance_value)) -%}
           {%- set data.entities = data.entities + [e] -%}
         {%- endif -%}
@@ -438,6 +443,13 @@ trigger:
   event_data:
     domain: light
     service: turn_on
+  enabled: !input turn_on
+- platform: event
+  event_type: call_service
+  event_data:
+    domain: light
+    service: turn_off
+  enabled: !input turn_off
 - platform: homeassistant
   event: start
 # NOTE: We intentionally avoid a global `state_changed` event trigger because it
