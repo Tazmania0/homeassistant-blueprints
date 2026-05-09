@@ -46,11 +46,12 @@ blueprint:
         boolean: {}
     daylight_mode:
       name: Daylight mode
-      description: Keeps lights at maximum during the day plateau and minimum during
-        the night plateau, with smooth transitions at sunrise and sunset. This is
-        different from Reverse brightness: Daylight mode changes day/night behavior
-        and anchor handling, while Reverse brightness only flips the slope inside a
-        transition range.
+      description: >-
+        Keeps lights at maximum during the day plateau and minimum during the night
+        plateau, with smooth transitions at sunrise and sunset. This is different
+        from Reverse brightness: Daylight mode changes day/night behavior and anchor
+        handling, while Reverse brightness only flips the slope inside a transition
+        range.
       default: false
       selector:
         boolean: {}
