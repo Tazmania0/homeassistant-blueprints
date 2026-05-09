@@ -179,7 +179,7 @@ variables:
     endif -%}\n  {%- set data = namespace(e=[]) -%}\n  {%- for e in eids -%}\n    {%-
     if e in entity_list -%}\n      {%- set data.e = data.e + [e] -%}\n    {%- endif
     -%}\n  {% endfor %}\n  {{ data.e }}\n{%- endif -%}"
-  affected_available_entities: "{%- set data = namespace(e=[]) -%}\n{%- for e in affected_entities -%}\n  {%- if states(e) not in ['unavailable', 'unknown', 'offline'] -%}\n    {%- set data.e = data.e + [e] -%}\n  {%- endif -%}\n{%- endfor -%}\n{{ data.e }}"
+  affected_available_entities: "{%- set data = namespace(e=[]) -%}\n{%- for e in affected_entities -%}\n  {%- if states(e) not in ['unavailable', 'unknown', 'offline', 'none'] -%}\n    {%- set data.e = data.e + [e] -%}\n  {%- endif -%}\n{%- endfor -%}\n{{ data.e }}"
   all_affected_unavailable: '{{ affected_entities|length > 0 and affected_available_entities|length == 0 }}'
   current_states: "{%- set data = namespace(e=[]) -%} {%- for e in entity_list -%}\n
     \ {%- set a = {'entity_id': e, 'state': states(e), 'brightness': state_attr(e,
