@@ -425,15 +425,6 @@ trigger:
     service: turn_on
 - platform: homeassistant
   event: start
-- platform: state
-  entity_id: >-
-    {{ trigger_entity_list }}
-  from: 'off'
-  to: 'on'
-- platform: state
-  entity_id: >-
-    {{ trigger_entity_list }}
-  from: 'unavailable'
 mode: queued
 action:
 - choose:
