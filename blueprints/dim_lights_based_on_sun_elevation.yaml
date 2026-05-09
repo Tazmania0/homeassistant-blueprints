@@ -311,7 +311,7 @@ variables:
           {%- set data.entities = data.entities + [e] -%}
         {%- elif can_dim and is_on and current_brightness != brightness
               and ((allowance_input|float == 100.0)
-                   or ((current_brightness - last_brightness)|abs <= allowance_value)) -%}
+                   or ((current_brightness - (last_brightness|default(brightness)))|abs <= allowance_value)) -%}
           {%- set data.entities = data.entities + [e] -%}
         {%- endif -%}
       {%- endif -%}
@@ -417,7 +417,7 @@ action:
               end_rising }}{% else %}{{ start_setting ~ ', ' ~ end_setting }}{% endif
               %})\n weather_condition: {{ weather_condition }}\n weather_fallback_active: {{ weather_fallback_active }}\n weather_cooling_multiplier: {{ weather_cooling_multiplier }}\n color_temp_kelvin: {{ color_temp_kelvin }}\n {% if last_elevation != \"\" -%}last elevation: {{ last_elevation
               }}\n{% endif %} new brightness: {{ brightness }}\n {% if last_elevation
-              != \"\" -%}last brightness: {{ last_brightness }}\n{% endif %} \n current_states:
+              != \"\" -%}last brightness: {{ last_brightness|default('n/a') }}\n{% endif %} \n current_states:
               {{ current_states }}\n \n force_turn_on: {{ force_turn_on }}\n force_turn_off:
               {{ force_turn_off }}\n \n entities: {{ entity_list }}\n \n turn_on_entities:
               {{ turn_on_entities }}\n \n dim_entities: {{ dim_entities }}\n dim_color_temp_entities: {{ dim_color_temp_entities }}\n dim_brightness_only_entities: {{ dim_brightness_only_entities }}\n \n turn_off_entities:
