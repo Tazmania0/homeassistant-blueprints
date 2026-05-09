@@ -407,12 +407,14 @@ trigger:
   event: start
 - platform: state
   entity_id: >-
-    {{ trigger_target_lights.entity_id if trigger_target_lights.entity_id is string else trigger_target_lights.entity_id | join(',') }}
+    {%- set entities = trigger_target_lights.entity_id | default([], true) -%}
+    {{ [entities] if entities is string else entities }}
   from: 'off'
   to: 'on'
 - platform: state
   entity_id: >-
-    {{ trigger_target_lights.entity_id if trigger_target_lights.entity_id is string else trigger_target_lights.entity_id | join(',') }}
+    {%- set entities = trigger_target_lights.entity_id | default([], true) -%}
+    {{ [entities] if entities is string else entities }}
   from: 'unavailable'
 mode: queued
 action:
