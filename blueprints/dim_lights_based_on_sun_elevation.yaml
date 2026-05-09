@@ -271,6 +271,26 @@ variables:
     {%- else -%}
       {{ [] }}
     {%- endif -%}
+  affected_available_entities: >-
+    {%- set data = namespace(entities=[]) -%}
+    {%- for e in affected_entities -%}
+      {%- if states(e) not in ['unavailable', 'unknown'] -%}
+        {%- set data.entities = data.entities + [e] -%}
+      {%- endif -%}
+    {%- endfor -%}
+    {{ data.entities }}
+  all_affected_unavailable: >-
+    {{ affected_entities|length > 0 and affected_available_entities|length == 0 }}
+  force_turn_on: >-
+    {{ turn_on and trigger_is_event and trigger.event.event_type == 'call_service' and trigger.event.data.service == 'turn_on' }}
+  force_turn_off: >-
+    {{ turn_off and trigger_is_event and trigger.event.event_type == 'call_service' and trigger.event.data.service == 'turn_off' }}
+  turn_on_entities: >-
+    {%- if force_turn_on -%}
+      {{ affected_available_entities }}
+    {%- else -%}
+      {{ [] }}
+    {%- endif -%}
   dim_entities: >-
     {%- set data = namespace(entities=[]) -%}
     {%- for e in entity_list -%}
