@@ -14,6 +14,17 @@ blueprint:
           entity:
           - domain:
             - light
+    state_trigger_lights:
+      name: Trigger lights on state changes (optional)
+      description: Optional list of specific light entities to monitor for recovery.
+        Use the same entities as Lights/target_lights. This trigger only acts when
+        a monitored light changes from unavailable/unknown to an available state,
+        so it avoids flooding Home Assistant.
+      default: []
+      selector:
+        entity:
+          domain: light
+          multiple: true
     max_brightness:
       name: Maximum brightness percent
       description: Brightness to set as the maximum brightness
@@ -242,6 +253,39 @@ variables:
     {% endif %}
   # True when no weather entity is configured, meaning sun-only color temperature behavior.
   weather_fallback_active: '{{ weather_entity is not string or weather_entity|length == 0 }}'
+  elevation: '{{ state_attr(''sun.sun'', ''elevation'')|float(0) }}'
+  rising: '{{ elevation|float >= 0 }}'
+  transition_span: >-
+    {% if rising %}
+      {{ (end_rising|float - start_rising|float)|abs }}
+    {% else %}
+      {{ (start_setting|float - end_setting|float)|abs }}
+    {% endif %}
+  normalized_position: >-
+    {% if transition_span|float == 0 %}
+      1
+    {% elif rising %}
+      {{ ((elevation|float - start_rising|float) / transition_span|float) | float }}
+    {% else %}
+      {{ ((start_setting|float - elevation|float) / transition_span|float) | float }}
+    {% endif %}
+  clamped_position: '{{ [0, [normalized_position|float, 1]|min]|max }}'
+  effective_position: '{{ 1 - clamped_position|float if reverse else clamped_position|float }}'
+  brightness_percent: >-
+    {{ (min_brightness|float + ((max_brightness|float - min_brightness|float) * effective_position|float)) | round(0) }}
+  brightness: '{{ (brightness_percent|float * 2.55) | round(0) | int }}'
+  last_elevation: '{{ this.attributes.last_elevation if this is defined and this.attributes is defined and this.attributes.last_elevation is defined else "" }}'
+  last_brightness: '{{ this.attributes.last_brightness if this is defined and this.attributes is defined and this.attributes.last_brightness is defined else brightness }}'
+  color_temp_kelvin_base: >-
+    {{ (min_color_temp_kelvin|float + ((max_color_temp_kelvin|float - min_color_temp_kelvin|float) * effective_position|float)) | round(0) }}
+  color_temp_kelvin: '{{ (color_temp_kelvin_base|float * weather_cooling_multiplier|float) | round(0) | int }}'
+  current_states: >-
+    {%- set data = namespace(items=[]) -%}
+    {%- for e in entity_list -%}
+      {%- set data.items = data.items + [e ~ ': ' ~ states(e)] -%}
+    {%- endfor -%}
+    {{ data.items | join(', ') }}
+  error_msg: ''
   trigger_is_event: '{{ trigger is defined and trigger.platform == ''event'' }}'
   skip_event: >-
     {{ trigger_is_event
@@ -251,7 +295,21 @@ variables:
   affected_entities: >-
     {%- if skip_event -%}
       {{ [] }}
-    {%- elif trigger is not defined or trigger.platform != 'event' -%}
+    {%- elif trigger is not defined -%}
+      {{ entity_list }}
+    {%- elif trigger.platform == 'state'
+          and trigger.entity_id is defined
+          and trigger.entity_id in entity_list
+          and trigger.from_state is defined
+          and trigger.to_state is defined -%}
+      {%- set old_s = trigger.from_state.state if trigger.from_state is not none else none -%}
+      {%- set new_s = trigger.to_state.state if trigger.to_state is not none else none -%}
+      {%- if old_s in ['unavailable', 'unknown'] and new_s not in ['unavailable', 'unknown', none] -%}
+        {{ [trigger.entity_id] }}
+      {%- else -%}
+        {{ [] }}
+      {%- endif -%}
+    {%- elif trigger.platform != 'event' -%}
       {{ entity_list }}
     {%- elif trigger.event.event_type == 'state_changed'
           and trigger.event.data is defined
@@ -309,6 +367,7 @@ variables:
     {%- set data = namespace(entities=[]) -%}
     {%- for e in entity_list -%}
       {%- set current_brightness = state_attr(e, 'brightness') -%}
+      {%- set desired_brightness = brightness if brightness is defined else current_brightness -%}
       {%- set is_on = states(e) == 'on' -%}
       {%- set last_changed = (now() - states[e].last_changed) -%}
       {%- set scm = state_attr(e, 'supported_color_modes') or [] -%}
@@ -323,9 +382,9 @@ variables:
           {%- set data.entities = data.entities + [e] -%}
         {%- elif can_dim and force_turn_on -%}
           {%- set data.entities = data.entities + [e] -%}
-        {%- elif can_dim and is_on and current_brightness != brightness
+        {%- elif can_dim and is_on and current_brightness != desired_brightness
               and ((allowance_input|float == 100.0)
-                   or ((current_brightness - (last_brightness|default(brightness)))|abs <= allowance_value)) -%}
+                   or ((current_brightness - (last_brightness|default(desired_brightness)))|abs <= allowance_value)) -%}
           {%- set data.entities = data.entities + [e] -%}
         {%- endif -%}
       {%- endif -%}
@@ -372,8 +431,8 @@ trigger:
 - platform: state
   entity_id: sun.sun
   attribute: elevation
-- platform: event
-  event_type: state_changed
+- platform: state
+  entity_id: !input state_trigger_lights
 - platform: event
   event_type: call_service
   event_data:
@@ -381,12 +440,10 @@ trigger:
     service: turn_on
 - platform: homeassistant
   event: start
-# NOTE: Home Assistant currently validates `entity_id` in state triggers
-# before evaluating blueprint trigger variables. Using `{{ trigger_entity_list }}`
-# here causes a startup/config error ("Entity {{ trigger_entity_list }} is neither
-# a valid entity ID nor a valid UUID"). The automation still reacts to light
-# changes through the `call_service` trigger above and the guarded
-# `state_changed` event trigger.
+# NOTE: We intentionally avoid a global `state_changed` event trigger because it
+# fires for every entity update in Home Assistant and can flood the instance.
+# Light changes are handled through the scoped optional state trigger list and
+# the `call_service` trigger above; sun-driven updates come from `sun.sun` elevation.
 mode: restart
 action:
 - choose:
