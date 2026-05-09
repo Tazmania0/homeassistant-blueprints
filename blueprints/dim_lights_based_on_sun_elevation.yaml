@@ -439,7 +439,7 @@ trigger:
 # here causes a startup/config error ("Entity {{ trigger_entity_list }} is neither
 # a valid entity ID nor a valid UUID"). The automation still reacts to light
 # changes through the `call_service` trigger above.
-mode: queued
+mode: restart
 action:
 - choose:
   - conditions:
