@@ -38,19 +38,19 @@ blueprint:
           step: 1.0
     reverse:
       name: Reverse brightness
-      description: If checked, light will start dim when sun starts to set (start
-        elevation value) and will be at full brightness when the elevation has reached
-        the end elevation value.
+      description: Inverts the brightness curve only within the active transition
+        window. Use this when you want lower sun elevation to produce brighter light
+        (or vice versa), without changing when daytime/nighttime are considered active.
       default: false
       selector:
         boolean: {}
     daylight_mode:
       name: Daylight mode
-      description: Keep lights brightest during daytime and dimmest during nighttime.
-        Brightness transitions smoothly around sunrise and sunset using the configured
-        elevation limits. In daylight mode, End elevation (setting) is treated as
-        the night minimum point and End elevation (rising) as the day maximum point.
-        Start elevation sliders keep their existing behavior for force on/off transitions.
+      description: Keeps lights at maximum during the day plateau and minimum during
+        the night plateau, with smooth transitions at sunrise and sunset. This is
+        different from Reverse brightness: Daylight mode changes day/night behavior
+        and anchor handling, while Reverse brightness only flips the slope inside a
+        transition range.
       default: false
       selector:
         boolean: {}
@@ -78,6 +78,8 @@ blueprint:
         boolean: {}
     start_elevation_setting:
       name: Elevation of the sun to start dim the light when the sun is setting
+      description: Sunset transition start point. When the sun drops below this
+        elevation, the automation begins adjusting brightness toward the sunset endpoint.
       default: 0
       selector:
         number:
@@ -107,6 +109,8 @@ blueprint:
         boolean: {}
     start_elevation_rising:
       name: Elevation of the sun to start brighten the light when the sun is rising
+      description: Sunrise transition start point. When the sun rises above this
+        elevation, the automation begins adjusting brightness toward the sunrise endpoint.
       default: -8
       selector:
         number:
