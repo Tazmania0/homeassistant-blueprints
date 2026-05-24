@@ -307,6 +307,11 @@ variables:
     ''call_service'' and trigger.event.data.service == ''turn_on'' }}'
   force_turn_off: '{{ turn_off and trigger_is_event and trigger.event.event_type ==
     ''call_service'' and trigger.event.data.service == ''turn_off'' }}'
+  force_recovery_sync: "{{ trigger is defined\n   and trigger.platform == 'state'\n
+    \  and trigger.entity_id != 'sun.sun'\n   and trigger.from_state is defined\n
+    \  and trigger.to_state is defined\n   and trigger.from_state.state in ['unavailable',
+    'unknown']\n   and trigger.to_state.state not in ['unavailable', 'unknown',
+    none] }}"
   turn_on_entities: "{%- if force_turn_on -%}\n  {{ affected_available_entities }}\n{%-
     else -%}\n  {{ [] }}\n{%- endif -%}"
   dim_entities: "{%- set data = namespace(entities=[]) -%} {%- for e in entity_list
@@ -323,6 +328,8 @@ variables:
     \     ) or (not is_on) -%}\n  {# logic continues… #}\n  {%- if e in affected_available_entities
     -%}\n    {%- if trigger_is_event and (not is_on or (is_on and last_changed.total_seconds()
     < 2)) -%}\n      {%- set data.entities = data.entities + [e] -%}\n    {%- elif
+    force_recovery_sync and can_dim and is_on -%}\n      {%- set data.entities =
+    data.entities + [e] -%}\n    {%- elif
     can_dim and force_turn_on -%}\n      {%- set data.entities = data.entities + [e]
     -%}\n    {%- elif can_dim and is_on and (\n            current_brightness != desired_brightness\n
     \           or (supports_color_temp and current_color_temp_kelvin != desired_color_temp_kelvin)\n
@@ -475,4 +482,37 @@ action:
             entity_id: '{{ dim_brightness_only_entities }}'
             brightness: '{{ brightness }}'
             transition: '{{ transition_time }}'
+      default: []
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ force_recovery_sync and not all_affected_unavailable
+            and dim_entities|length > 0 }}'
+        sequence:
+        - repeat:
+            count: 3
+            sequence:
+            - delay:
+                seconds: 10
+            - choose:
+              - conditions:
+                - condition: template
+                  value_template: '{{ dim_color_temp_entities|length > 0 }}'
+                sequence:
+                - service: light.turn_on
+                  data:
+                    entity_id: '{{ dim_color_temp_entities }}'
+                    brightness: '{{ brightness }}'
+                    color_temp_kelvin: '{{ color_temp_kelvin }}'
+                    transition: '{{ transition_time }}'
+              - conditions:
+                - condition: template
+                  value_template: '{{ dim_brightness_only_entities|length > 0 }}'
+                sequence:
+                - service: light.turn_on
+                  data:
+                    entity_id: '{{ dim_brightness_only_entities }}'
+                    brightness: '{{ brightness }}'
+                    transition: '{{ transition_time }}'
+              default: []
       default: []
