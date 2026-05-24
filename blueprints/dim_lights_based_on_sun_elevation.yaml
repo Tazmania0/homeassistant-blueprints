@@ -478,6 +478,8 @@ action:
         - service: light.turn_on
           data:
             entity_id: '{{ turn_on_entities }}'
+      default: []
+    - choose:
       - conditions:
         - condition: template
           value_template: '{{ not skip_event and not all_affected_unavailable and
@@ -489,6 +491,8 @@ action:
             brightness: '{{ brightness }}'
             color_temp_kelvin: '{{ color_temp_kelvin }}'
             transition: '{{ transition_time }}'
+      default: []
+    - choose:
       - conditions:
         - condition: template
           value_template: '{{ not skip_event and not all_affected_unavailable and
@@ -522,6 +526,8 @@ action:
                     brightness: '{{ brightness }}'
                     color_temp_kelvin: '{{ color_temp_kelvin }}'
                     transition: '{{ transition_time }}'
+              default: []
+            - choose:
               - conditions:
                 - condition: template
                   value_template: '{{ dim_brightness_only_entities|length > 0 }}'
