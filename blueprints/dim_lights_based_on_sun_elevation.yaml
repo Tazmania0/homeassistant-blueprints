@@ -205,11 +205,14 @@ variables:
   allowance_value: '{{ allowance_input|float * 2.54 }}'
   debugging: !input debugging
   target_lights: !input target_lights
-  entity_list: "{%- set target = target_lights | default({}, true) -%} {%- set entities
+  raw_entity_list: "{%- set target = target_lights | default({}, true) -%} {%- set entities
     = target.entity_id if target is mapping and 'entity_id' in target else target
     -%} {%- set raw_list = [entities] if entities is string else (entities if entities
     is sequence and entities is not mapping else []) -%} {{ raw_list\n   | reject('none')\n
     \  | reject('equalto', '')\n   | unique\n   | list }}"
+  entity_list: "{%- set expanded = expand(raw_entity_list) | map(attribute='entity_id')
+    | list -%} {{ (expanded if expanded|length > 0 else raw_entity_list) | unique
+    | list }}"
   transition_time: !input transition_time
   turn_on: !input turn_on
   turn_off: !input turn_off
@@ -293,7 +296,7 @@ variables:
     trigger.event.data.service_data.entity_id is defined -%}\n  {%- if trigger.event.data.service_data.entity_id
     is string -%}\n    {%- set eids = [trigger.event.data.service_data.entity_id]
     -%}\n  {%- else -%}\n    {%- set eids = trigger.event.data.service_data.entity_id
-    -%}\n  {%- endif -%}\n  {%- set data = namespace(e=[]) -%}\n  {%- for e in eids
+    -%}\n  {%- endif -%}\n  {%- set expanded_eids = expand(eids) | map(attribute='entity_id') | list -%}\n  {%- set service_entities = expanded_eids if expanded_eids|length > 0 else eids -%}\n  {%- set data = namespace(e=[]) -%}\n  {%- for e in service_entities
     -%}\n    {%- if e in entity_list -%}\n      {%- set data.e = data.e + [e] -%}\n
     \   {%- endif -%}\n  {%- endfor -%}\n  {{ data.e }}\n{%- else -%}\n  {{ [] }}\n{%-
     endif -%}"
@@ -321,8 +324,17 @@ variables:
     = (\n        (state_attr(e, 'brightness') is not none)\n        or ('brightness'
     in scm) or ('hs' in scm) or ('xy' in scm)\n        or ('rgb' in scm) or supports_color_temp\n
     \     ) or (not is_on) -%}\n  {# logic continues… #}\n  {%- if e in affected_available_entities
-    -%}\n    {%- if trigger_is_event and (not is_on or (is_on and last_changed.total_seconds()
-    < 2)) -%}\n      {%- set data.entities = data.entities + [e] -%}\n    {%- elif
+    -%}\n    {%- if trigger_is_event and trigger.event.event_type == 'call_service'
+    and (not is_on or (is_on and last_changed.total_seconds() < 2)) -%}\n
+    \     {%- set data.entities = data.entities + [e] -%}\n    {%- elif
+    trigger_is_event and trigger.event.event_type == 'state_changed' and is_on and
+    last_changed.total_seconds() < 2 -%}\n      {%- set data.entities = data.entities
+    + [e] -%}\n    {%- elif trigger is defined and trigger.platform == 'state'
+    and trigger.from_state is defined and trigger.to_state is defined and trigger.from_state.state
+    in ['unavailable', 'unknown'] and trigger.to_state.state not in ['unavailable',
+    'unknown', none] and is_on and last_changed.total_seconds() < 2 -%}\n      {%-
+    set data.entities = data.entities
+    + [e] -%}\n    {%- elif
     can_dim and force_turn_on -%}\n      {%- set data.entities = data.entities + [e]
     -%}\n    {%- elif can_dim and is_on and (\n            current_brightness != desired_brightness\n
     \           or (supports_color_temp and current_color_temp_kelvin != desired_color_temp_kelvin)\n
@@ -359,6 +371,8 @@ trigger:
   from:
   - unavailable
   - unknown
+- platform: event
+  event_type: state_changed
 - platform: event
   event_type: call_service
   event_data:
@@ -433,8 +447,8 @@ action:
               }}, azimuth: {{ trigger.from_state.attributes.azimuth }})\n to:   (elevation:
               {{ trigger.to_state.attributes.elevation }}, azimuth: {{ trigger.to_state.attributes.azimuth
               }})\n {% endif %} {% if trigger is defined and trigger.platform == 'event'
-              -%} entity_id: {{ trigger.event.data.service_data.entity_id }}\n service_data_length:
-              {{ trigger.event.data.service_data|length }}\n complete event data:
+              -%} entity_id: {{ trigger.event.data.entity_id if trigger.event.event_type == 'state_changed' else trigger.event.data.service_data.entity_id|default('n/a') }}\n service_data_length:
+              {{ trigger.event.data.service_data|default({})|length }}\n complete event data:
               {{ trigger.event.data }}\n {% endif %} "
       default: []
     - choose:
