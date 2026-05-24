@@ -254,9 +254,8 @@ variables:
     }}\n{% else %}\n  {{ ((elevation|float - end_setting|float) / transition_span|float)
     | float }}\n{% endif %}"
   clamped_position: '{{ [0, [normalized_position|float, 1]|min]|max }}'
-  effective_position: "{{ (1 - clamped_position|float) if reverse and not (daylight_mode
-    and (normalized_position|float <= 0 or normalized_position|float >= 1)) else
-    clamped_position|float }}"
+  effective_position: '{{ 1 - clamped_position|float if reverse else clamped_position|float
+    }}'
   brightness_percent: '{{ (min_brightness|float + ((max_brightness|float - min_brightness|float)
     * effective_position|float)) | round(0) }}'
   brightness: '{{ (brightness_percent|float * 2.55) | round(0) | int }}'
@@ -266,10 +265,7 @@ variables:
     is defined and this.attributes.last_brightness is defined else brightness }}'
   color_temp_kelvin_base: '{{ (min_color_temp_kelvin|float + ((max_color_temp_kelvin|float
     - min_color_temp_kelvin|float) * effective_position|float)) | round(0) }}'
-  weather_cooling_active: '{{ clamped_position|float > 0 }}'
-  weather_effective_multiplier: '{{ weather_cooling_multiplier if weather_cooling_active
-    else 1.0 }}'
-  color_temp_kelvin: '{{ ((color_temp_kelvin_base|float * weather_effective_multiplier|float
+  color_temp_kelvin: '{{ ((color_temp_kelvin_base|float * weather_cooling_multiplier|float
     / 50) | round(0) | int * 50) }}'
   current_states: "{%- set data = namespace(items=[]) -%} {%- for e in entity_list
     -%}\n  {%- set data.items = data.items + [e ~ ': ' ~ states(e)] -%}\n{%- endfor
@@ -326,7 +322,6 @@ variables:
     \  and trigger.to_state is defined\n   and trigger.from_state.state in ['unavailable',
     'unknown']\n   and trigger.to_state.state not in ['unavailable', 'unknown',
     none] }}"
-  force_daylight_floor_sync: '{{ daylight_mode and clamped_position|float == 0 }}'
   turn_on_entities: "{%- if force_turn_on -%}\n  {%- set data = namespace(entities=[])
     -%}\n  {%- for e in affected_available_entities -%}\n    {%- set scm = state_attr(e,
     'supported_color_modes') or [] -%}\n    {%- set supports_color_temp = ('color_temp'
@@ -352,8 +347,6 @@ variables:
     < 2)) -%}\n      {%- set data.entities = data.entities + [e] -%}\n    {%- elif
     force_recovery_sync and can_dim and is_on -%}\n      {%- set data.entities =
     data.entities + [e] -%}\n    {%- elif
-    force_daylight_floor_sync and can_dim and is_on and current_brightness != desired_brightness
-    -%}\n      {%- set data.entities = data.entities + [e] -%}\n    {%- elif
     can_dim and force_turn_on -%}\n      {%- set data.entities = data.entities + [e]
     -%}\n    {%- elif can_dim and is_on and (\n            current_brightness != desired_brightness\n
     \           or (supports_color_temp and current_color_temp_kelvin != desired_color_temp_kelvin)\n
