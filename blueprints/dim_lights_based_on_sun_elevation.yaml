@@ -203,6 +203,8 @@ blueprint:
 variables:
   allowance_input: !input allowance
   allowance_value: '{{ allowance_input|float * 2.54 }}'
+  micro_brightness_delta: '{{ [1, allowance_value|float * 0.5]|max }}'
+  micro_color_temp_delta: 50
   debugging: !input debugging
   target_lights: !input target_lights
   entity_list: "{%- set target = target_lights | default({}, true) -%} {%- set entities
@@ -240,6 +242,7 @@ variables:
   weather_fallback_active: '{{ weather_entity is not string or weather_entity|length
     == 0 }}'
   elevation: '{{ state_attr(''sun.sun'', ''elevation'')|float(0) }}'
+  elevation_bucket: '{{ (elevation|float / 2) | round(0) }}'
   rising: '{{ state_attr(''sun.sun'', ''rising'') if state_attr(''sun.sun'', ''rising'')
     is not none else (elevation|float >= 0) }}'
   transition_span: "{% if daylight_mode %}\n  {{ (end_rising|float - end_setting|float)|abs
@@ -300,11 +303,13 @@ variables:
     endfor -%} {{ data.entities }}"
   all_affected_unavailable: '{{ affected_entities|length > 0 and affected_available_entities|length
     == 0 }}'
-  sun_elevation_trigger: "{{ trigger is defined\n   and trigger.platform == 'state'\n
-    \  and trigger.entity_id == 'sun.sun'\n   and trigger.from_state is defined\n
-    \  and trigger.to_state is defined }}"
-  previous_elevation: "{{ trigger.from_state.attributes.elevation|float(elevation)
-    if sun_elevation_trigger else last_elevation }}"
+  sun_elevation_trigger: "{{ trigger is defined\n   and (\n     (trigger.platform
+    == 'state' and trigger.entity_id == 'sun.sun')\n     or trigger.platform ==
+    'template'\n     or trigger.platform == 'time_pattern'\n   ) }}"
+  previous_elevation: "{% if trigger is defined and trigger.platform == 'state' and
+    trigger.entity_id == 'sun.sun' and trigger.from_state is defined %}\n  {{ trigger.from_state.attributes.elevation|float(elevation)
+    }}\n{% elif last_elevation != \"\" %}\n  {{ last_elevation }}\n{% else %}\n  {{ elevation
+    }}\n{% endif %}"
   force_turn_on: "{{ turn_on and (\n   (trigger_is_event and trigger.event.event_type
     == 'call_service' and trigger.event.data.service == 'turn_on')\n   or (sun_elevation_trigger
     and (\n        (not reverse and not rising and previous_elevation|float >= start_setting|float
@@ -322,6 +327,11 @@ variables:
     \  and trigger.to_state is defined\n   and trigger.from_state.state in ['unavailable',
     'unknown']\n   and trigger.to_state.state not in ['unavailable', 'unknown',
     none] }}"
+  run_reason: "{% if trigger is not defined %}\n  manual_execute\n{% elif trigger.platform
+    == 'homeassistant' %}\n  startup\n{% elif trigger_is_event and trigger.event.event_type
+    == 'call_service' %}\n  manual_light_event\n{% elif force_recovery_sync %}\n
+    \ recovery_sync\n{% elif sun_elevation_trigger %}\n  sun_update\n{% else %}\n
+    \ other\n{% endif %}"
   turn_on_entities: "{%- if force_turn_on -%}\n  {%- set data = namespace(entities=[])
     -%}\n  {%- for e in affected_available_entities -%}\n    {%- set scm = state_attr(e,
     'supported_color_modes') or [] -%}\n    {%- set supports_color_temp = ('color_temp'
@@ -342,18 +352,40 @@ variables:
     = ('color_temp' in scm) or ('color_temp_kelvin' in scm) -%}\n  {%- set can_dim
     = (\n        (state_attr(e, 'brightness') is not none)\n        or ('brightness'
     in scm) or ('hs' in scm) or ('xy' in scm)\n        or ('rgb' in scm) or supports_color_temp\n
-    \     ) or (not is_on) -%}\n  {# logic continues… #}\n  {%- if e in affected_available_entities
-    -%}\n    {%- if trigger_is_event and (not is_on or (is_on and last_changed.total_seconds()
+    \     ) or (not is_on) -%}\n  {%- set brightness_delta = ((current_brightness
+    - desired_brightness)|abs) if current_brightness is not none and desired_brightness
+    is not none else micro_brightness_delta|float -%}\n  {%- set color_temp_delta
+    = ((current_color_temp_kelvin - desired_color_temp_kelvin)|abs) if supports_color_temp
+    and current_color_temp_kelvin is not none and desired_color_temp_kelvin is not
+    none else 0 -%}\n  {# logic continues… #}\n  {%- if e in affected_available_entities
+    -%}\n    {%- if run_reason == 'manual_light_event' and (not is_on or (is_on and last_changed.total_seconds()
     < 2)) -%}\n      {%- set data.entities = data.entities + [e] -%}\n    {%- elif
-    force_recovery_sync and can_dim and is_on -%}\n      {%- set data.entities =
+    run_reason == 'manual_execute' and can_dim and is_on -%}\n      {%- set data.entities
+    = data.entities + [e] -%}\n    {%- elif
+    run_reason == 'recovery_sync' and can_dim and is_on -%}\n      {%- set data.entities =
     data.entities + [e] -%}\n    {%- elif
     can_dim and force_turn_on -%}\n      {%- set data.entities = data.entities + [e]
-    -%}\n    {%- elif can_dim and is_on and (\n            current_brightness != desired_brightness\n
-    \           or (supports_color_temp and current_color_temp_kelvin != desired_color_temp_kelvin)\n
+    -%}\n    {%- elif can_dim and is_on and (\n            brightness_delta|float >= micro_brightness_delta|float\n
+    \           or (supports_color_temp and color_temp_delta|float >= micro_color_temp_delta|float)\n
     \         ) and ((allowance_input|float == 100.0)\n               or ((current_brightness
     - (last_brightness|default(desired_brightness)))|abs <= allowance_value)) -%}\n
     \     {%- set data.entities = data.entities + [e] -%}\n    {%- endif -%}\n  {%-
     endif -%}\n{%- endfor -%} {{ data.entities }}"
+  micro_delta_debug: "{%- set data = namespace(items=[]) -%} {%- for e in affected_available_entities
+    -%}\n  {%- set current_brightness = state_attr(e, 'brightness') -%}\n  {%- set
+    desired_brightness = brightness if brightness is defined else current_brightness
+    -%}\n  {%- set current_color_temp_kelvin = state_attr(e, 'color_temp_kelvin')
+    -%}\n  {%- set desired_color_temp_kelvin = color_temp_kelvin if color_temp_kelvin
+    is defined else current_color_temp_kelvin -%}\n  {%- set scm = state_attr(e,
+    'supported_color_modes') or [] -%}\n  {%- set supports_color_temp = ('color_temp'
+    in scm) or ('color_temp_kelvin' in scm) -%}\n  {%- set brightness_delta =
+    ((current_brightness - desired_brightness)|abs) if current_brightness is not
+    none and desired_brightness is not none else 'n/a' -%}\n  {%- set color_temp_delta
+    = ((current_color_temp_kelvin - desired_color_temp_kelvin)|abs) if supports_color_temp
+    and current_color_temp_kelvin is not none and desired_color_temp_kelvin is not
+    none else 'n/a' -%}\n  {%- set data.items = data.items + [e ~ ': brightness='
+    ~ brightness_delta ~ ', color_temp=' ~ color_temp_delta] -%}\n{%- endfor -%}
+    {{ data.items | join('; ') }}"
   dim_color_temp_entities: "{%- set data = namespace(entities=[]) -%} {%- for e in
     dim_entities -%}\n  {%- set scm = state_attr(e, 'supported_color_modes') or []
     -%}\n  {%- if ('color_temp' in scm) or ('color_temp_kelvin' in scm) -%}\n    {%-
@@ -375,9 +407,11 @@ trigger_variables:
     raw_list\n   | reject('none')\n   | reject('equalto', '')\n   | unique\n   | list
     }}"
 trigger:
-- platform: state
-  entity_id: sun.sun
-  attribute: elevation
+- platform: template
+  value_template: "{% set elevation_tenths = (state_attr('sun.sun', 'elevation')|float(0)
+    * 10) | round(0) | int %} {{ elevation_tenths % 20 == 0 }}"
+- platform: time_pattern
+  minutes: /10
 - platform: state
   entity_id: !input state_trigger_lights
   from:
@@ -437,8 +471,11 @@ action:
             level: debug
             logger: homeassistant.components.blueprint.dim_lights_based_on_sun_elevation
             message: " DEBUG:\n skip_event: {{ skip_event }}\n allowance_value: {{
-              allowance_value }}\n affected_entities: {{ affected_entities }}\n\n
-              elevation: {{ elevation }} ({% if rising %}{{ start_rising ~ ', ' ~
+              allowance_value }}\n run_reason: {{ run_reason }}\n micro_brightness_delta: {{ micro_brightness_delta
+              }}\n micro_color_temp_delta: {{ micro_color_temp_delta }}\n affected_entities:
+              {{ affected_entities }}\n micro_delta_debug: {{ micro_delta_debug }}\n\n
+              elevation: {{ elevation }}\n elevation_bucket:
+              {{ elevation_bucket }} ({% if rising %}{{ start_rising ~ ', ' ~
               end_rising }}{% else %}{{ start_setting ~ ', ' ~ end_setting }}{% endif
               %})\n weather_condition: {{ weather_condition }}\n weather_fallback_active:
               {{ weather_fallback_active }}\n weather_cooling_multiplier: {{ weather_cooling_multiplier

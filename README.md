@@ -15,6 +15,7 @@ Blueprints are used as templates for building automations really quickly.
 - Automatically handles mixed light capabilities:
   - lights with color temperature support get `brightness + color_temp_kelvin`
   - lights without color temperature support get brightness updates only
+- For different lighting roles, prefer separate automation instances instead of one large group. For example, use one instance for ambient lights with a longer transition and another for accent/task lights with a shorter transition or different brightness/color temperature range.
 
 ## Development
 Install test/lint dependencies:
