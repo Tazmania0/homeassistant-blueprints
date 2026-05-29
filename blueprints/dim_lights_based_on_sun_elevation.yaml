@@ -262,10 +262,7 @@ variables:
   brightness_percent: '{{ (min_brightness|float + ((max_brightness|float - min_brightness|float)
     * effective_position|float)) | round(0) }}'
   brightness: '{{ (brightness_percent|float * 2.55) | round(0) | int }}'
-  last_elevation: '{{ this.attributes.last_elevation if this is defined and this.attributes
-    is defined and this.attributes.last_elevation is defined else "" }}'
-  last_brightness: '{{ this.attributes.last_brightness if this is defined and this.attributes
-    is defined and this.attributes.last_brightness is defined else brightness }}'
+  last_brightness: '{{ brightness }}'
   color_temp_kelvin_base: '{{ (min_color_temp_kelvin|float + ((max_color_temp_kelvin|float
     - min_color_temp_kelvin|float) * effective_position|float)) | round(0) }}'
   color_temp_kelvin: '{{ ((color_temp_kelvin_base|float * weather_cooling_multiplier|float
@@ -306,22 +303,14 @@ variables:
   sun_elevation_trigger: "{{ trigger is defined\n   and (\n     (trigger.platform
     == 'state' and trigger.entity_id == 'sun.sun')\n     or trigger.platform ==
     'template'\n     or trigger.platform == 'time_pattern'\n   ) }}"
-  previous_elevation: "{% if trigger is defined and trigger.platform == 'state' and
-    trigger.entity_id == 'sun.sun' and trigger.from_state is defined %}\n  {{ trigger.from_state.attributes.elevation|float(elevation)
-    }}\n{% elif last_elevation != \"\" %}\n  {{ last_elevation }}\n{% else %}\n  {{ elevation
-    }}\n{% endif %}"
-  force_turn_on: "{{ turn_on and (\n   (trigger_is_event and trigger.event.event_type
-    == 'call_service' and trigger.event.data.service == 'turn_on')\n   or (sun_elevation_trigger
-    and (\n        (not reverse and not rising and previous_elevation|float >= start_setting|float
-    and elevation|float <= start_setting|float)\n        or (reverse and rising and
-    previous_elevation|float <= end_rising|float and elevation|float >= end_rising|float)\n
-    \     ))\n) }}"
-  force_turn_off: "{{ turn_off and (\n   (trigger_is_event and trigger.event.event_type
-    == 'call_service' and trigger.event.data.service == 'turn_off')\n   or (sun_elevation_trigger
-    and (\n        (not reverse and rising and previous_elevation|float <= end_rising|float
-    and elevation|float >= end_rising|float)\n        or (reverse and not rising and
-    previous_elevation|float >= end_setting|float and elevation|float <= end_setting|float)\n
-    \     ))\n) }}"
+  force_turn_on: "{{ turn_on and trigger is defined and (\n   (trigger_is_event
+    and trigger.event.event_type == 'call_service' and trigger.event.data.service
+    == 'turn_on')\n   or (trigger.id is defined and trigger.id in ['sunset_turn_on_crossed',
+    'reverse_turn_on_crossed'])\n) }}"
+  force_turn_off: "{{ turn_off and trigger is defined and (\n   (trigger_is_event
+    and trigger.event.event_type == 'call_service' and trigger.event.data.service
+    == 'turn_off')\n   or (trigger.id is defined and trigger.id in ['sunrise_turn_off_crossed',
+    'reverse_turn_off_crossed'])\n) }}"
   force_recovery_sync: "{{ trigger is defined\n   and trigger.platform == 'state'\n
     \  and trigger.entity_id != 'sun.sun'\n   and trigger.from_state is defined\n
     \  and trigger.to_state is defined\n   and trigger.from_state.state in ['unavailable',
@@ -400,6 +389,12 @@ variables:
     }}\n{%- else -%}\n  {{ [] }}\n{%- endif -%}"
 trigger_variables:
   trigger_target_lights: !input target_lights
+  trigger_turn_on: !input turn_on
+  trigger_turn_off: !input turn_off
+  trigger_reverse: !input reverse
+  trigger_start_setting: !input start_elevation_setting
+  trigger_end_setting: !input end_elevation_setting
+  trigger_end_rising: !input end_elevation_rising
   trigger_entity_list: "{%- set target = trigger_target_lights | default({}, true)
     -%} {%- set entities = target.entity_id if target is mapping and 'entity_id' in
     target else target -%} {%- set raw_list = [entities] if entities is string else
@@ -408,28 +403,58 @@ trigger_variables:
     }}"
 trigger:
 - platform: template
+  id: sunset_turn_on_crossed
+  value_template: "{% set elevation = state_attr('sun.sun', 'elevation')|float(0)
+    %} {% set rising = state_attr('sun.sun', 'rising') if state_attr('sun.sun',
+    'rising') is not none else false %} {{ trigger_turn_on and not trigger_reverse
+    and not rising and elevation <= trigger_start_setting|float }}"
+- platform: template
+  id: reverse_turn_on_crossed
+  value_template: "{% set elevation = state_attr('sun.sun', 'elevation')|float(0)
+    %} {% set rising = state_attr('sun.sun', 'rising') if state_attr('sun.sun',
+    'rising') is not none else false %} {{ trigger_turn_on and trigger_reverse
+    and rising and elevation >= trigger_end_rising|float }}"
+- platform: template
+  id: sunrise_turn_off_crossed
+  value_template: "{% set elevation = state_attr('sun.sun', 'elevation')|float(0)
+    %} {% set rising = state_attr('sun.sun', 'rising') if state_attr('sun.sun',
+    'rising') is not none else false %} {{ trigger_turn_off and not trigger_reverse
+    and rising and elevation >= trigger_end_rising|float }}"
+- platform: template
+  id: reverse_turn_off_crossed
+  value_template: "{% set elevation = state_attr('sun.sun', 'elevation')|float(0)
+    %} {% set rising = state_attr('sun.sun', 'rising') if state_attr('sun.sun',
+    'rising') is not none else false %} {{ trigger_turn_off and trigger_reverse
+    and not rising and elevation <= trigger_end_setting|float }}"
+- platform: template
+  id: sun_dim_update
   value_template: "{% set elevation_tenths = (state_attr('sun.sun', 'elevation')|float(0)
     * 10) | round(0) | int %} {{ elevation_tenths % 20 == 0 }}"
 - platform: time_pattern
+  id: sun_update_interval
   minutes: /10
 - platform: state
+  id: recovery_state_available
   entity_id: !input state_trigger_lights
   from:
   - unavailable
   - unknown
 - platform: event
+  id: manual_light_turn_on
   event_type: call_service
   event_data:
     domain: light
     service: turn_on
   enabled: !input turn_on
 - platform: event
+  id: manual_light_turn_off
   event_type: call_service
   event_data:
     domain: light
     service: turn_off
   enabled: !input turn_off
 - platform: homeassistant
+  id: homeassistant_start
   event: start
 mode: restart
 action:
@@ -479,10 +504,9 @@ action:
               end_rising }}{% else %}{{ start_setting ~ ', ' ~ end_setting }}{% endif
               %})\n weather_condition: {{ weather_condition }}\n weather_fallback_active:
               {{ weather_fallback_active }}\n weather_cooling_multiplier: {{ weather_cooling_multiplier
-              }}\n color_temp_kelvin: {{ color_temp_kelvin }}\n {% if last_elevation
-              != \"\" -%}last elevation: {{ last_elevation }}\n{% endif %} new brightness:
-              {{ brightness }}\n {% if last_elevation != \"\" -%}last brightness:
-              {{ last_brightness|default('n/a') }}\n{% endif %} \n current_states:
+              }}\n color_temp_kelvin: {{ color_temp_kelvin }}\n new brightness:
+              {{ brightness }}\n baseline brightness: {{ last_brightness|default('n/a')
+              }}\n current_states:
               {{ current_states }}\n \n force_turn_on: {{ force_turn_on }}\n force_turn_off:
               {{ force_turn_off }}\n \n entities: {{ entity_list }}\n \n turn_on_entities:
               {{ turn_on_entities }}\n \n dim_entities: {{ dim_entities }}\n dim_color_temp_entities:
@@ -507,6 +531,7 @@ action:
         - service: light.turn_off
           data:
             entity_id: '{{ turn_off_entities }}'
+            transition: '{{ transition_time }}'
       - conditions:
         - condition: template
           value_template: '{{ not skip_event and not all_affected_unavailable and
@@ -515,6 +540,7 @@ action:
         - service: light.turn_on
           data:
             entity_id: '{{ turn_on_entities }}'
+            transition: '{{ transition_time }}'
       default: []
     - choose:
       - conditions:
