@@ -210,8 +210,13 @@ variables:
   entity_list: "{%- set target = target_lights | default({}, true) -%} {%- set entities
     = target.entity_id if target is mapping and 'entity_id' in target else target
     -%} {%- set raw_list = [entities] if entities is string else (entities if entities
-    is sequence and entities is not mapping else []) -%} {{ raw_list\n   | reject('none')\n
-    \  | reject('equalto', '')\n   | unique\n   | list }}"
+    is sequence and entities is not mapping else []) -%} {%- set expanded = namespace(entities=[])
+    -%} {%- for e in raw_list | reject('none') | reject('equalto', '') -%}\n
+    \ {%- set children = state_attr(e, 'entity_id') -%}\n  {%- if children is sequence
+    and children is not string -%}\n    {%- set expanded.entities = expanded.entities
+    + children -%}\n  {%- else -%}\n    {%- set expanded.entities = expanded.entities
+    + [e] -%}\n  {%- endif -%}\n{%- endfor -%} {{ expanded.entities | unique
+    | list }}"
   transition_time: !input transition_time
   turn_on: !input turn_on
   turn_off: !input turn_off
