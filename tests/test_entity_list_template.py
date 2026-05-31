@@ -49,3 +49,7 @@ def test_expands_light_group_entities():
 
 def test_deduplicates_expanded_group_entities():
     assert render(["light.group_with_duplicate", "light.c"]) == "['light.a', 'light.c']"
+
+
+def test_expands_group_and_keeps_direct_light():
+    assert render(["light.group", "light.c"]) == "['light.a', 'light.b', 'light.c']"

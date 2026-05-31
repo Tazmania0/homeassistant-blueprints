@@ -583,14 +583,42 @@ action:
             sequence:
             - delay:
                 seconds: 10
+            - variables:
+                recovery_available_entities: "{%- set data = namespace(entities=[])
+                  -%} {%- for e in affected_entities -%}\n  {%- if states(e) not
+                  in ['unavailable', 'unknown'] -%}\n    {%- set data.entities =
+                  data.entities + [e] -%}\n  {%- endif -%}\n{%- endfor -%} {{ data.entities
+                  }}"
+                recovery_dim_entities: "{%- set data = namespace(entities=[]) -%}
+                  {%- for e in recovery_available_entities -%}\n  {%- set is_on =
+                  states(e) == 'on' -%}\n  {%- set scm = state_attr(e, 'supported_color_modes')
+                  or [] -%}\n  {%- set supports_color_temp = ('color_temp' in scm)
+                  or ('color_temp_kelvin' in scm) -%}\n  {%- set can_dim = (\n
+                  \      (state_attr(e, 'brightness') is not none)\n        or ('brightness'
+                  in scm) or ('hs' in scm) or ('xy' in scm)\n        or ('rgb' in
+                  scm) or supports_color_temp\n      ) -%}\n  {%- if can_dim and
+                  is_on -%}\n    {%- set data.entities = data.entities + [e] -%}\n
+                  \ {%- endif -%}\n{%- endfor -%} {{ data.entities }}"
+                recovery_color_temp_entities: "{%- set data = namespace(entities=[])
+                  -%} {%- for e in recovery_dim_entities -%}\n  {%- set scm = state_attr(e,
+                  'supported_color_modes') or [] -%}\n  {%- if ('color_temp' in
+                  scm) or ('color_temp_kelvin' in scm) -%}\n    {%- set data.entities
+                  = data.entities + [e] -%}\n  {%- endif -%}\n{%- endfor -%} {{ data.entities
+                  }}"
+                recovery_brightness_only_entities: "{%- set data = namespace(entities=[])
+                  -%} {%- for e in recovery_dim_entities -%}\n  {%- set scm = state_attr(e,
+                  'supported_color_modes') or [] -%}\n  {%- if not (('color_temp'
+                  in scm) or ('color_temp_kelvin' in scm)) -%}\n    {%- set data.entities
+                  = data.entities + [e] -%}\n  {%- endif -%}\n{%- endfor -%} {{ data.entities
+                  }}"
             - choose:
               - conditions:
                 - condition: template
-                  value_template: '{{ dim_color_temp_entities|length > 0 }}'
+                  value_template: '{{ recovery_color_temp_entities|length > 0 }}'
                 sequence:
                 - service: light.turn_on
                   data:
-                    entity_id: '{{ dim_color_temp_entities }}'
+                    entity_id: '{{ recovery_color_temp_entities }}'
                     brightness: '{{ brightness }}'
                     color_temp_kelvin: '{{ color_temp_kelvin }}'
                     transition: '{{ transition_time }}'
@@ -598,11 +626,11 @@ action:
             - choose:
               - conditions:
                 - condition: template
-                  value_template: '{{ dim_brightness_only_entities|length > 0 }}'
+                  value_template: '{{ recovery_brightness_only_entities|length > 0 }}'
                 sequence:
                 - service: light.turn_on
                   data:
-                    entity_id: '{{ dim_brightness_only_entities }}'
+                    entity_id: '{{ recovery_brightness_only_entities }}'
                     brightness: '{{ brightness }}'
                     transition: '{{ transition_time }}'
               default: []
