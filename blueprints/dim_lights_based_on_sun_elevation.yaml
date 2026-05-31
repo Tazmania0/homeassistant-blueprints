@@ -585,7 +585,7 @@ action:
                 seconds: 10
             - variables:
                 recovery_available_entities: "{%- set data = namespace(entities=[])
-                  -%} {%- for e in affected_entities -%}\n  {%- if states(e) not
+                  -%} {%- for e in entity_list -%}\n  {%- if states(e) not
                   in ['unavailable', 'unknown'] -%}\n    {%- set data.entities =
                   data.entities + [e] -%}\n  {%- endif -%}\n{%- endfor -%} {{ data.entities
                   }}"

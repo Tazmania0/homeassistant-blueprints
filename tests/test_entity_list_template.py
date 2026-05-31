@@ -14,10 +14,25 @@ TEMPLATE = """{%- set target = target_lights | default({}, true) -%}
 {%- endfor -%}
 {{ expanded.entities | unique | list }}"""
 
+AFFECTED_AVAILABLE_TEMPLATE = """{%- set data = namespace(entities=[]) -%}
+{%- for e in entity_list -%}
+  {%- if states(e) not in ['unavailable', 'unknown'] -%}
+    {%- set data.entities = data.entities + [e] -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ data.entities }}"""
+
 
 ENTITY_ATTRIBUTES = {
     "light.group": {"entity_id": ["light.a", "light.b"]},
     "light.group_with_duplicate": {"entity_id": ["light.a", "light.c", "light.a"]},
+}
+
+ENTITY_STATES = {
+    "light.a": "on",
+    "light.b": "unavailable",
+    "light.c": "unknown",
+    "light.d": "on",
 }
 
 
@@ -25,6 +40,12 @@ def render(target_lights):
     env = Environment()
     env.globals["state_attr"] = lambda entity_id, attr: ENTITY_ATTRIBUTES.get(entity_id, {}).get(attr)
     return env.from_string(TEMPLATE).render(target_lights=target_lights)
+
+
+def render_available(entity_list):
+    env = Environment()
+    env.globals["states"] = lambda entity_id: ENTITY_STATES.get(entity_id, "on")
+    return env.from_string(AFFECTED_AVAILABLE_TEMPLATE).render(entity_list=entity_list)
 
 
 def test_mapping_input():
@@ -53,3 +74,7 @@ def test_deduplicates_expanded_group_entities():
 
 def test_expands_group_and_keeps_direct_light():
     assert render(["light.group", "light.c"]) == "['light.a', 'light.b', 'light.c']"
+
+
+def test_filters_unavailable_entities_from_expanded_target_set():
+    assert render_available(["light.a", "light.b", "light.c", "light.d"]) == "['light.a', 'light.d']"
