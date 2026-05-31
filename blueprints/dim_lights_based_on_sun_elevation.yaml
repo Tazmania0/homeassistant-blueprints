@@ -576,7 +576,7 @@ action:
       - conditions:
         - condition: template
           value_template: '{{ force_recovery_sync and not all_affected_unavailable
-            and dim_entities|length > 0 }}'
+            and entity_list|length > 0 }}'
         sequence:
         - repeat:
             count: 3
